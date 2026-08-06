@@ -6,7 +6,7 @@
 // Graph) -- no SDK, just the exact calls this agent actually needs.
 
 const GRAPH_API_VERSION = "v21.0";
-const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
+const GRAPH_BASE = `https://graph.instagram.com/${GRAPH_API_VERSION}`;
 
 export interface CreateMediaContainerResult {
   ok: boolean;

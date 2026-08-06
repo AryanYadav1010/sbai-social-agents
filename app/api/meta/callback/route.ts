@@ -5,7 +5,6 @@ import { encryptToken } from "@/lib/crypto";
 import { logAudit } from "@/lib/audit";
 
 const GRAPH_API_VERSION = "v21.0";
-const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
 const META_APP_ID = process.env.META_APP_ID;
 const META_APP_SECRET = process.env.META_APP_SECRET;
 
@@ -29,27 +28,35 @@ export async function GET(req: NextRequest) {
   const redirectUri = new URL("/api/meta/callback", req.url).toString();
 
   try {
-    // 1. Exchange the auth code for a short-lived user access token.
-    const shortTokenUrl = new URL(`${GRAPH_BASE}/oauth/access_token`);
-    shortTokenUrl.searchParams.set("client_id", META_APP_ID);
-    shortTokenUrl.searchParams.set("redirect_uri", redirectUri);
-    shortTokenUrl.searchParams.set("client_secret", META_APP_SECRET);
-    shortTokenUrl.searchParams.set("code", code);
+    // 1. Exchange the auth code for a short-lived token. Instagram API with
+    // Instagram Login returns the IG-scoped user_id directly here -- no
+    // Facebook Page lookup needed at all.
+    const shortTokenBody = new URLSearchParams({
+      client_id: META_APP_ID,
+      client_secret: META_APP_SECRET,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri,
+      code,
+    });
 
-    const shortTokenRes = await fetch(shortTokenUrl.toString());
+    const shortTokenRes = await fetch("https://api.instagram.com/oauth/access_token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: shortTokenBody,
+    });
     const shortTokenData = await shortTokenRes.json();
     if (!shortTokenRes.ok) {
-      return NextResponse.json({ error: shortTokenData?.error?.message || "Token exchange failed." }, { status: 502 });
+      return NextResponse.json({ error: shortTokenData?.error_message || "Token exchange failed." }, { status: 502 });
     }
     const shortLivedToken: string = shortTokenData.access_token;
+    const igUserId: string = String(shortTokenData.user_id);
 
     // 2. Exchange for a long-lived token (~60 days), so the connection
     // doesn't need re-authenticating constantly.
-    const longTokenUrl = new URL(`${GRAPH_BASE}/oauth/access_token`);
-    longTokenUrl.searchParams.set("grant_type", "fb_exchange_token");
-    longTokenUrl.searchParams.set("client_id", META_APP_ID);
+    const longTokenUrl = new URL("https://graph.instagram.com/access_token");
+    longTokenUrl.searchParams.set("grant_type", "ig_exchange_token");
     longTokenUrl.searchParams.set("client_secret", META_APP_SECRET);
-    longTokenUrl.searchParams.set("fb_exchange_token", shortLivedToken);
+    longTokenUrl.searchParams.set("access_token", shortLivedToken);
 
     const longTokenRes = await fetch(longTokenUrl.toString());
     const longTokenData = await longTokenRes.json();
@@ -59,34 +66,20 @@ export async function GET(req: NextRequest) {
     const longLivedToken: string = longTokenData.access_token;
     const expiresInSeconds: number | undefined = longTokenData.expires_in;
 
-    // 3. Find the connected Instagram Business Account via the user's Pages.
-    const pagesUrl = new URL(`${GRAPH_BASE}/me/accounts`);
-    pagesUrl.searchParams.set("fields", "id,name,instagram_business_account");
-    pagesUrl.searchParams.set("access_token", longLivedToken);
+    // 3. Fetch the account's username for a friendly display name.
+    const meUrl = new URL(`https://graph.instagram.com/${GRAPH_API_VERSION}/me`);
+    meUrl.searchParams.set("fields", "user_id,username");
+    meUrl.searchParams.set("access_token", longLivedToken);
 
-    const pagesRes = await fetch(pagesUrl.toString());
-    const pagesData = await pagesRes.json();
-    if (!pagesRes.ok) {
-      return NextResponse.json({ error: pagesData?.error?.message || "Could not list Facebook Pages." }, { status: 502 });
-    }
-
-    const pageWithInstagram = (pagesData.value || []).find(
-      (p: { instagram_business_account?: { id: string } }) => p.instagram_business_account?.id
-    );
-    if (!pageWithInstagram) {
-      return NextResponse.json(
-        { error: "No Facebook Page with a linked Instagram Business/Creator account was found for this login." },
-        { status: 400 }
-      );
-    }
-
-    const instagramBusinessAccountId: string = pageWithInstagram.instagram_business_account.id;
+    const meRes = await fetch(meUrl.toString());
+    const meData = await meRes.json();
+    const displayName: string = meRes.ok && meData.username ? meData.username : igUserId;
 
     await prisma.socialAccount.create({
       data: {
         platform: "INSTAGRAM",
-        externalAccountId: instagramBusinessAccountId,
-        displayName: pageWithInstagram.name,
+        externalAccountId: igUserId,
+        displayName,
         accessTokenEncrypted: encryptToken(longLivedToken),
         tokenExpiresAt: expiresInSeconds ? new Date(Date.now() + expiresInSeconds * 1000) : null,
       },
@@ -96,8 +89,8 @@ export async function GET(req: NextRequest) {
       actorEmail: session.user?.email,
       action: "social_account.connected",
       entity: "SocialAccount",
-      entityId: instagramBusinessAccountId,
-      metadata: { platform: "INSTAGRAM", pageName: pageWithInstagram.name },
+      entityId: igUserId,
+      metadata: { platform: "INSTAGRAM", username: displayName },
     });
 
     return NextResponse.redirect(new URL("/", req.url));
