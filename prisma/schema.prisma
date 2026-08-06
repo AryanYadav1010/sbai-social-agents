@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Platform {
+  INSTAGRAM
+  // FACEBOOK, TIKTOK, YOUTUBE reserved for later phases (Level 2 clusters
+  // not yet built) -- listed here only so the schema doesn't need a
+  // migration just to add the enum value when those phases start.
+  FACEBOOK
+  TIKTOK
+  YOUTUBE
+}
+
+enum SocialPostStatus {
+  DRAFT               // Content Creation Agent has produced a caption, not yet compliance-checked
+  COMPLIANCE_REJECTED  // Compliance Agent blocked it -- never reaches the approval queue
+  PENDING_APPROVAL     // passed Compliance, waiting on a human in /approvals
+  APPROVED             // human approved, Orchestrator is publishing (or about to)
+  REJECTED             // human explicitly rejected
+  PUBLISHED            // live on the real platform
+  PUBLISH_FAILED       // approved, but the platform API call failed
+}
+
+// One Meta app can hold multiple connected accounts eventually (Phase 4:
+// multi-account/agency views); v1 has exactly one row.
+model SocialAccount {
+  id                 String   @id @default(cuid())
+  platform           Platform
+  externalAccountId  String   // Instagram Business Account ID
+  displayName        String?
+  accessTokenEncrypted String // encrypted at rest, per the blueprint's Level 8 "non-negotiable" security note
+  tokenExpiresAt     DateTime?
+  posts              SocialPost[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([platform])
+}
+
+model SocialPost {
+  id                 String           @id @default(cuid())
+  accountId          String
+  account            SocialAccount    @relation(fields: [accountId], references: [id])
+  topic              String           // the human-entered brief the Content Creation Agent drafted from
+  imageUrl           String           // publicly-reachable image URL -- Instagram's Content Publishing API requires real media; Creative Design agent (visual asset generation) isn't built until a later phase, so this is human-supplied in v1
+  caption            String
+  status             SocialPostStatus @default(DRAFT)
+  complianceVerdict  Json?            // Compliance Agent's structured reasoning, always recorded even when it passes
+  externalMediaId    String?          // Instagram media ID once actually published
+  publishedAt        DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([status])
+  @@index([accountId])
+}
+
+// Mirrors sbai-systems' own AuditLog model exactly, for consistency across
+// both projects -- every agent decision and every human action logged here.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorEmail String?  // null when the actor is an agent, not a human
+  action     String
+  entity     String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+}
