@@ -11,17 +11,18 @@ This is a separate project from `sbai-systems` — same stack (Next.js App Route
 - `lib/orchestrator/publish.ts` — runs only after explicit human approval via `/approvals`; publishes through the Meta Ecosystem Agent.
 - `lib/agents/contentCreation.ts` — the only agent allowed to produce publish-ready text.
 - `lib/agents/compliance.ts` — deterministic hard-blocks (banned claims, length limits) plus an LLM nuance check. Fails closed if the nuance check errors.
-- `lib/agents/metaEcosystem.ts` — thin Instagram Graph API client (create media container → publish).
-- `/approvals` — the human-in-the-loop queue (Mode 1's whole point).
+- `lib/agents/metaEcosystem.ts` — thin Instagram Graph API client (create media container → wait for processing → publish). Supports both image posts and video/Reels (`media_type: REELS`, which requires polling `status_code` until `FINISHED` before publish).
+- `lib/agents/videoAgent.ts` — client for the separate **Video Agent** product (own repo, own deploy: FastAPI + OpenMontage/Remotion). Resolves a Video Agent production ID to a publicly-reachable video URL; the video is always generated over there, never re-implemented here.
+- `/approvals` — the human-in-the-loop queue (Mode 1's whole point). Drafting a post accepts either a manual media URL or a Video Agent production ID.
 
 ## Setup
 
-1. Copy `.env.example` to `.env.local`, fill in every value.
+1. Copy `.env.example` to `.env.local`, fill in every value (`VIDEO_AGENT_BASE_URL` is optional — only needed to draft posts from a Video Agent production instead of a manual URL).
 2. `npm install`
 3. `npx prisma migrate dev` (or `migrate deploy` against an existing DB)
 4. `npm run dev`
 5. Sign in (Google, must be in `ADMIN_EMAILS`), then **Connect Instagram** — requires a Meta app with your Instagram Business/Creator account added as a Tester (bypasses the 2-4 week App Review wait, since Development Mode apps can access tester-added accounts immediately).
-6. On `/approvals`, draft a post (topic + a publicly-reachable image URL — Instagram's API requires real media, there's no text-only post), review it, approve to actually publish.
+6. On `/approvals`, draft a post: a topic, plus either a publicly-reachable media URL or a production ID from the Video Agent app (generate the video there first). Review it, approve to actually publish.
 
 ## Explicitly not in Phase 1
 

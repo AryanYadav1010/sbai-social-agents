@@ -12,7 +12,9 @@ export interface CreateDraftResult {
 export async function createDraftPost(opts: {
   accountId: string;
   topic: string;
-  imageUrl: string;
+  mediaType: "IMAGE" | "VIDEO";
+  mediaUrl: string;
+  videoAgentProductionId?: string;
 }): Promise<CreateDraftResult> {
   const { caption, complianceVerdict } = await runDraftGraph(opts.topic);
 
@@ -22,7 +24,9 @@ export async function createDraftPost(opts: {
     data: {
       accountId: opts.accountId,
       topic: opts.topic,
-      imageUrl: opts.imageUrl,
+      mediaType: opts.mediaType,
+      mediaUrl: opts.mediaUrl,
+      videoAgentProductionId: opts.videoAgentProductionId,
       caption,
       status,
       complianceVerdict: JSON.parse(JSON.stringify(complianceVerdict)),

@@ -20,25 +20,26 @@ export interface PublishResult {
   error?: string;
 }
 
-// Instagram's publish flow is two calls: create a media container (image +
-// caption), then publish that container. Doing this as two explicit
+// Instagram's publish flow is two calls: create a media container (image/
+// video + caption), then publish that container. Doing this as two explicit
 // functions rather than one combined call keeps each step's failure mode
 // separately diagnosable -- container creation and publish fail for
-// different reasons (invalid image URL vs. account/permission issues).
+// different reasons (invalid media URL vs. account/permission issues).
 export async function createMediaContainer(
   instagramBusinessAccountId: string,
   accessToken: string,
-  opts: { imageUrl: string; caption: string }
+  opts: { mediaType: "IMAGE" | "VIDEO"; mediaUrl: string; caption: string }
 ): Promise<CreateMediaContainerResult> {
   try {
+    const body: Record<string, string> =
+      opts.mediaType === "VIDEO"
+        ? { media_type: "REELS", video_url: opts.mediaUrl, caption: opts.caption, access_token: accessToken }
+        : { image_url: opts.mediaUrl, caption: opts.caption, access_token: accessToken };
+
     const res = await fetch(`${GRAPH_BASE}/${instagramBusinessAccountId}/media`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        image_url: opts.imageUrl,
-        caption: opts.caption,
-        access_token: accessToken,
-      }),
+      body: JSON.stringify(body),
     });
 
     const data = await res.json();
@@ -49,6 +50,39 @@ export async function createMediaContainer(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error creating media container." };
   }
+}
+
+// Video (REELS) containers process asynchronously on Meta's side -- publish
+// must wait for status_code to leave IN_PROGRESS before it can succeed.
+// Image containers are also polled here for the same code path, but they
+// typically report FINISHED on the very first check.
+async function waitForContainerReady(
+  containerId: string,
+  accessToken: string,
+  opts: { timeoutMs?: number; intervalMs?: number } = {}
+): Promise<{ ok: boolean; error?: string }> {
+  const timeoutMs = opts.timeoutMs ?? 120_000;
+  const intervalMs = opts.intervalMs ?? 3_000;
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const url = new URL(`${GRAPH_BASE}/${containerId}`);
+    url.searchParams.set("fields", "status_code");
+    url.searchParams.set("access_token", accessToken);
+
+    const res = await fetch(url.toString());
+    const data = await res.json();
+    if (!res.ok) {
+      return { ok: false, error: data?.error?.message || `Graph API error ${res.status}` };
+    }
+
+    if (data.status_code === "FINISHED") return { ok: true };
+    if (data.status_code === "ERROR") return { ok: false, error: "Media container processing failed on Meta's side." };
+
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+
+  return { ok: false, error: "Timed out waiting for media container to finish processing." };
 }
 
 export async function publishMediaContainer(
@@ -76,18 +110,24 @@ export async function publishMediaContainer(
   }
 }
 
-// Combined convenience wrapper for the Orchestrator -- create then publish,
-// since v1 always does both immediately on human approval (no scheduling
-// yet).
+// Combined convenience wrapper for the Orchestrator -- create, wait for
+// processing, then publish, since v1 always does this immediately on human
+// approval (no scheduling yet).
 export async function publishInstagramPost(
   instagramBusinessAccountId: string,
   accessToken: string,
-  opts: { imageUrl: string; caption: string }
+  opts: { mediaType: "IMAGE" | "VIDEO"; mediaUrl: string; caption: string }
 ): Promise<PublishResult> {
   const container = await createMediaContainer(instagramBusinessAccountId, accessToken, opts);
   if (!container.ok || !container.containerId) {
     return { ok: false, error: container.error || "Failed to create media container." };
   }
+
+  const ready = await waitForContainerReady(container.containerId, accessToken);
+  if (!ready.ok) {
+    return { ok: false, error: ready.error || "Media container did not finish processing." };
+  }
+
   return publishMediaContainer(instagramBusinessAccountId, accessToken, container.containerId);
 }
 

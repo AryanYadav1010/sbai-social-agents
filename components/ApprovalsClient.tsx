@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 interface Post {
   id: string;
   topic: string;
-  imageUrl: string;
+  mediaType: "IMAGE" | "VIDEO";
+  mediaUrl: string;
+  videoAgentProductionId: string | null;
   caption: string;
   status: string;
   complianceVerdict: { passed: boolean; reasons: string[] } | null;
@@ -23,7 +25,9 @@ export default function ApprovalsClient({
 }) {
   const router = useRouter();
   const [topic, setTopic] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
+  const [mediaSource, setMediaSource] = useState<"url" | "videoAgent">("url");
+  const [mediaUrl, setMediaUrl] = useState("");
+  const [videoAgentProductionId, setVideoAgentProductionId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [actioningId, setActioningId] = useState<string | null>(null);
@@ -33,10 +37,14 @@ export default function ApprovalsClient({
     setError("");
     setSubmitting(true);
     try {
+      const body =
+        mediaSource === "videoAgent"
+          ? { topic, videoAgentProductionId }
+          : { topic, mediaUrl };
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, imageUrl }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -44,7 +52,8 @@ export default function ApprovalsClient({
         return;
       }
       setTopic("");
-      setImageUrl("");
+      setMediaUrl("");
+      setVideoAgentProductionId("");
       router.refresh();
     } finally {
       setSubmitting(false);
@@ -94,16 +103,51 @@ export default function ApprovalsClient({
             placeholder="e.g. Why service businesses lose leads over the weekend"
           />
         </label>
-        <label>
-          Image URL (must be publicly reachable)
-          <input
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            required
-            style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
-            placeholder="https://..."
-          />
-        </label>
+        <div style={{ display: "flex", gap: 16 }}>
+          <label>
+            <input
+              type="radio"
+              checked={mediaSource === "url"}
+              onChange={() => setMediaSource("url")}
+            />{" "}
+            Image/video URL
+          </label>
+          <label>
+            <input
+              type="radio"
+              checked={mediaSource === "videoAgent"}
+              onChange={() => setMediaSource("videoAgent")}
+            />{" "}
+            Video Agent production
+          </label>
+        </div>
+
+        {mediaSource === "url" ? (
+          <label>
+            Media URL (must be publicly reachable)
+            <input
+              value={mediaUrl}
+              onChange={(e) => setMediaUrl(e.target.value)}
+              required
+              style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
+              placeholder="https://..."
+            />
+          </label>
+        ) : (
+          <label>
+            Video Agent production ID
+            <input
+              value={videoAgentProductionId}
+              onChange={(e) => setVideoAgentProductionId(e.target.value)}
+              required
+              style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
+              placeholder="production ID from the Video Agent app"
+            />
+            <span style={{ fontSize: 12, color: "#666" }}>
+              Generate the video in the separate Video Agent app first, then paste its production ID here.
+            </span>
+          </label>
+        )}
         {error && <p style={{ color: "#b42318" }}>{error}</p>}
         <button type="submit" disabled={submitting || !hasAccount} style={{ padding: "8px 16px" }}>
           {submitting ? "Drafting..." : "Draft with Content Creation Agent"}
@@ -118,6 +162,13 @@ export default function ApprovalsClient({
             {post.status} · {new Date(post.createdAt).toLocaleString()}
           </div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>{post.topic}</div>
+          <div style={{ fontSize: 12, marginBottom: 6 }}>
+            {post.mediaType === "VIDEO" ? "🎬 Video" : "🖼️ Image"} ·{" "}
+            <a href={post.mediaUrl} target="_blank" rel="noreferrer">
+              media
+            </a>
+            {post.videoAgentProductionId && ` (Video Agent: ${post.videoAgentProductionId})`}
+          </div>
           <p style={{ whiteSpace: "pre-wrap" }}>{post.caption}</p>
           {post.complianceVerdict && !post.complianceVerdict.passed && (
             <ul style={{ color: "#b42318" }}>

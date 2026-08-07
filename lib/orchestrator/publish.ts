@@ -22,7 +22,8 @@ export async function publishApprovedPost(postId: string) {
 
   const accessToken = decryptToken(post.account.accessTokenEncrypted);
   const result = await publishInstagramPost(post.account.externalAccountId, accessToken, {
-    imageUrl: post.imageUrl,
+    mediaType: post.mediaType,
+    mediaUrl: post.mediaUrl,
     caption: post.caption,
   });
 
