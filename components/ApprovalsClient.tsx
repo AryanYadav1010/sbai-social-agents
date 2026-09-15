@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import AnalyticsPanel, { type PerformanceSnapshot } from "@/components/AnalyticsPanel";
+import TrendAudiencePanel, { type TrendContext, type AudienceContext } from "@/components/TrendAudiencePanel";
 
 interface Post {
   id: string;
@@ -12,8 +14,11 @@ interface Post {
   caption: string;
   status: string;
   complianceVerdict: { passed: boolean; reasons: string[] } | null;
+  trendContext: TrendContext | null;
+  audienceContext: AudienceContext | null;
   externalMediaId: string | null;
   createdAt: string;
+  performanceSnapshots: PerformanceSnapshot[];
 }
 
 export default function ApprovalsClient({
@@ -177,8 +182,12 @@ export default function ApprovalsClient({
               ))}
             </ul>
           )}
+          <TrendAudiencePanel trendContext={post.trendContext} audienceContext={post.audienceContext} />
           {post.status === "PUBLISHED" && (
-            <p style={{ color: "#16803d" }}>Published — media ID {post.externalMediaId}</p>
+            <>
+              <p style={{ color: "#16803d" }}>Published — media ID {post.externalMediaId}</p>
+              <AnalyticsPanel postId={post.id} latestSnapshot={post.performanceSnapshots[0] ?? null} />
+            </>
           )}
           {post.status === "PENDING_APPROVAL" && (
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>

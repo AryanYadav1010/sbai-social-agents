@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/db";
+import { decryptToken } from "@/lib/crypto";
 import { runDraftGraph } from "@/lib/orchestrator/draftGraph";
+import { getPerformanceHistorySummary } from "@/lib/agents/learningLoop";
 import { logAudit } from "@/lib/audit";
+import type { AudienceProfile } from "@/lib/agents/audienceAgent";
 
 export interface CreateDraftResult {
   postId: string;
@@ -16,7 +19,21 @@ export async function createDraftPost(opts: {
   mediaUrl: string;
   videoAgentProductionId?: string;
 }): Promise<CreateDraftResult> {
-  const { caption, complianceVerdict } = await runDraftGraph(opts.topic);
+  const account = await prisma.socialAccount.findUnique({ where: { id: opts.accountId } });
+  if (!account) {
+    throw new Error(`SocialAccount ${opts.accountId} not found.`);
+  }
+
+  const audienceProfile = (account.audienceProfile as AudienceProfile | null) ?? null;
+  const performanceHistorySummary = await getPerformanceHistorySummary(opts.accountId);
+  const accessToken = account.accessTokenEncrypted ? decryptToken(account.accessTokenEncrypted) : undefined;
+
+  const { caption, complianceVerdict, trendSuggestion, audienceGuidance } = await runDraftGraph({
+    topic: opts.topic,
+    accessToken,
+    audienceProfile,
+    performanceHistorySummary,
+  });
 
   const status = complianceVerdict.passed ? "PENDING_APPROVAL" : "COMPLIANCE_REJECTED";
 
@@ -30,6 +47,8 @@ export async function createDraftPost(opts: {
       caption,
       status,
       complianceVerdict: JSON.parse(JSON.stringify(complianceVerdict)),
+      trendContext: trendSuggestion ? JSON.parse(JSON.stringify(trendSuggestion)) : undefined,
+      audienceContext: audienceGuidance ? JSON.parse(JSON.stringify(audienceGuidance)) : undefined,
     },
   });
 

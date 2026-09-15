@@ -136,6 +136,84 @@ export interface AccountInsights {
   mediaCount?: number;
 }
 
+export interface MediaInsights {
+  raw: Record<string, number>;
+  likeCount?: number;
+  commentsCount?: number;
+  savedCount?: number;
+  sharesCount?: number;
+  reach?: number;
+  totalInteractions?: number;
+  unavailableFields: string[];
+  fetchedAt: string;
+}
+
+// Metric availability per media type, verified against Meta's own docs.
+// `impressions` is deliberately excluded -- deprecated for media created
+// after July 2, 2024, and every post this project will ever publish is
+// after that date. Graph API rejects the ENTIRE request if any one
+// requested metric is invalid for that media's product type, so each
+// candidate is queried individually below rather than as one combined
+// `metric=a,b,c` request.
+const MEDIA_INSIGHT_METRICS: Record<"IMAGE" | "VIDEO", string[]> = {
+  IMAGE: ["likes", "comments", "saved", "shares", "reach", "total_interactions", "profile_activity", "profile_visits"],
+  VIDEO: ["likes", "comments", "saved", "shares", "reach", "total_interactions", "ig_reels_avg_watch_time"],
+};
+
+// Analytics Agent's read: per-media insights for one already-published post.
+// Read-only, admin-triggered on demand (no cron/queue infra in this
+// project) -- never called automatically, never affects publishing.
+export async function getMediaInsights(
+  mediaId: string,
+  accessToken: string,
+  mediaType: "IMAGE" | "VIDEO"
+): Promise<{ ok: boolean; insights?: MediaInsights; error?: string }> {
+  const candidates = MEDIA_INSIGHT_METRICS[mediaType];
+  const raw: Record<string, number> = {};
+  const unavailableFields: string[] = [];
+
+  const results = await Promise.allSettled(
+    candidates.map(async (metric) => {
+      const url = new URL(`${GRAPH_BASE}/${mediaId}/insights`);
+      url.searchParams.set("metric", metric);
+      url.searchParams.set("access_token", accessToken);
+      const res = await fetch(url.toString());
+      const data = await res.json();
+      if (!res.ok) throw new Error(metric);
+      const value = data?.data?.[0]?.values?.[0]?.value;
+      if (typeof value !== "number") throw new Error(metric);
+      return { metric, value };
+    })
+  );
+
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      raw[result.value.metric] = result.value.value;
+    } else {
+      unavailableFields.push(result.reason instanceof Error ? result.reason.message : "unknown");
+    }
+  }
+
+  if (Object.keys(raw).length === 0) {
+    return { ok: false, error: "No insight metrics were available for this media." };
+  }
+
+  return {
+    ok: true,
+    insights: {
+      raw,
+      likeCount: raw.likes,
+      commentsCount: raw.comments,
+      savedCount: raw.saved,
+      sharesCount: raw.shares,
+      reach: raw.reach,
+      totalInteractions: raw.total_interactions,
+      unavailableFields,
+      fetchedAt: new Date().toISOString(),
+    },
+  };
+}
+
 // Basic insights for the connected account only -- Graph API gives zero
 // competitor-account visibility beyond public viewing, per the blueprint's
 // own reality-check for this specialist.

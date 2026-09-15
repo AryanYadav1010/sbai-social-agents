@@ -42,6 +42,7 @@ model SocialAccount {
   displayName        String?
   accessTokenEncrypted String // encrypted at rest, per the blueprint's Level 8 "non-negotiable" security note
   tokenExpiresAt     DateTime?
+  audienceProfile    Json?    // Audience Agent config: {businessSummary, targetAudience, brandVoice?, goals?} -- set via the dashboard, advisory only
   posts              SocialPost[]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -60,13 +61,38 @@ model SocialPost {
   caption            String
   status             SocialPostStatus @default(DRAFT)
   complianceVerdict  Json?            // Compliance Agent's structured reasoning, always recorded even when it passes
+  trendContext       Json?            // Trend Agent's suggestion at draft time (advisory, never blocks) -- TrendSuggestion shape
+  audienceContext    Json?            // Audience Agent's guidance at draft time (advisory, never blocks) -- AudienceGuidance shape
   externalMediaId    String?          // Instagram media ID once actually published
   publishedAt        DateTime?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
+  performanceSnapshots PostPerformance[]
+
   @@index([status])
   @@index([accountId])
+}
+
+// Analytics Agent snapshots -- one row per "Refresh analytics" click, kept as
+// a history (not upserted) so the Learning Loop can see trends over time,
+// not just the latest number.
+model PostPerformance {
+  id                String     @id @default(cuid())
+  postId            String
+  post              SocialPost @relation(fields: [postId], references: [id])
+  fetchedAt         DateTime   @default(now())
+  likeCount         Int?
+  commentsCount     Int?
+  savedCount        Int?
+  sharesCount       Int?
+  reach             Int?
+  totalInteractions Int?
+  raw               Json       // every metric Meta actually returned, unfiltered
+  unavailableFields String[]   @default([]) // metrics that were rejected/unsupported for this media type
+
+  @@index([postId])
+  @@index([postId, fetchedAt])
 }
 
 // Mirrors sbai-systems' own AuditLog model exactly, for consistency across
