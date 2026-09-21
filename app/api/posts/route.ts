@@ -24,23 +24,25 @@ export async function POST(req: NextRequest) {
   const topic = body?.topic;
   const mediaUrl = body?.mediaUrl;
   const videoAgentProductionId = body?.videoAgentProductionId;
+  const platform = body?.platform === "TIKTOK" ? "TIKTOK" : "INSTAGRAM";
 
   if (!topic || typeof topic !== "string") {
     return NextResponse.json({ error: "topic is required." }, { status: 400 });
   }
   if (!mediaUrl && !videoAgentProductionId) {
     return NextResponse.json(
-      { error: "mediaUrl or videoAgentProductionId is required (Instagram requires real media, not text-only posts)." },
+      { error: "mediaUrl or videoAgentProductionId is required (both platforms require real media, not text-only posts)." },
       { status: 400 }
     );
   }
 
-  const account = await prisma.socialAccount.findFirst({ where: { platform: "INSTAGRAM" } });
+  const account = await prisma.socialAccount.findFirst({ where: { platform } });
   if (!account) {
-    return NextResponse.json({ error: "No Instagram account connected yet. Connect one via /api/meta/connect first." }, { status: 400 });
+    const connectPath = platform === "TIKTOK" ? "/api/tiktok/connect" : "/api/meta/connect";
+    return NextResponse.json({ error: `No ${platform} account connected yet. Connect one via ${connectPath} first.` }, { status: 400 });
   }
 
-  let resolvedMediaType: "IMAGE" | "VIDEO" = "IMAGE";
+  let resolvedMediaType: "IMAGE" | "VIDEO" = body?.mediaType === "VIDEO" ? "VIDEO" : "IMAGE";
   let resolvedMediaUrl: string;
 
   if (videoAgentProductionId && typeof videoAgentProductionId === "string") {
@@ -54,6 +56,11 @@ export async function POST(req: NextRequest) {
     resolvedMediaUrl = mediaUrl;
   } else {
     return NextResponse.json({ error: "mediaUrl must be a string." }, { status: 400 });
+  }
+
+  // TikTok's Content Posting API is video-only -- there is no image-post path.
+  if (platform === "TIKTOK" && resolvedMediaType !== "VIDEO") {
+    return NextResponse.json({ error: "TikTok posts must be video (use a Video Agent production, or set mediaType to VIDEO)." }, { status: 400 });
   }
 
   try {

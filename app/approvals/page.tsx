@@ -25,18 +25,19 @@ export default async function ApprovalsPage() {
   });
 
   const account = await prisma.socialAccount.findFirst({ where: { platform: "INSTAGRAM" } });
-  const hasAccount = Boolean(account);
+  const tiktokAccount = await prisma.socialAccount.findFirst({ where: { platform: "TIKTOK" } });
+  const hasAccounts = { INSTAGRAM: Boolean(account), TIKTOK: Boolean(tiktokAccount) };
 
   return (
     <main style={{ padding: 40, maxWidth: 720, margin: "0 auto" }}>
       <h1>Approvals</h1>
       <p style={{ color: "#666" }}>
-        Mode 1: nothing publishes to Instagram without an explicit approval here.
+        Mode 1: nothing publishes to Instagram or TikTok without an explicit approval here.
       </p>
       <BusinessProfileEditor initialProfile={(account?.audienceProfile as AudienceProfile | null) ?? null} />
       <ApprovalsClient
         initialPosts={JSON.parse(JSON.stringify(posts))}
-        hasAccount={hasAccount}
+        hasAccounts={hasAccounts}
       />
     </main>
   );

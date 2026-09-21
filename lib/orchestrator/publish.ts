@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { decryptToken } from "@/lib/crypto";
 import { publishInstagramPost } from "@/lib/agents/metaEcosystem";
+import { publishTikTokVideo } from "@/lib/agents/tiktokEcosystem";
 import { logAudit } from "@/lib/audit";
 
 // Runs only after an explicit human approval (Mode 1: nothing publishes
@@ -21,11 +22,14 @@ export async function publishApprovedPost(postId: string) {
   }
 
   const accessToken = decryptToken(post.account.accessTokenEncrypted);
-  const result = await publishInstagramPost(post.account.externalAccountId, accessToken, {
-    mediaType: post.mediaType,
-    mediaUrl: post.mediaUrl,
-    caption: post.caption,
-  });
+  const result =
+    post.account.platform === "TIKTOK"
+      ? await publishTikTokVideo(accessToken, { mediaUrl: post.mediaUrl, caption: post.caption })
+      : await publishInstagramPost(post.account.externalAccountId, accessToken, {
+          mediaType: post.mediaType,
+          mediaUrl: post.mediaUrl,
+          caption: post.caption,
+        });
 
   if (result.ok && result.mediaId) {
     await prisma.socialPost.update({

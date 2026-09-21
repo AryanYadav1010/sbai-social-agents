@@ -27,20 +27,33 @@ export default async function Home() {
     );
   }
 
-  const account = await prisma.socialAccount.findFirst({ where: { platform: "INSTAGRAM" } });
+  const [instagram, tiktok] = await Promise.all([
+    prisma.socialAccount.findFirst({ where: { platform: "INSTAGRAM" } }),
+    prisma.socialAccount.findFirst({ where: { platform: "TIKTOK" } }),
+  ]);
 
   return (
     <main style={{ padding: 40, maxWidth: 480, margin: "0 auto" }}>
       <h1>SB AI Systems — Social Agents</h1>
-      <p>Phase 1: Orchestrator + Meta Ecosystem Agent (Instagram) + Content Creation + Compliance, Mode 1.</p>
+      <p>Orchestrator + Meta/TikTok Ecosystem Agents + Content Creation + Compliance, Mode 1.</p>
 
-      {account ? (
+      {instagram ? (
         <p>
-          Connected: <strong>{account.displayName || account.externalAccountId}</strong>
+          Instagram connected: <strong>{instagram.displayName || instagram.externalAccountId}</strong>
         </p>
       ) : (
         <p>
           No Instagram account connected yet. <a href="/api/meta/connect">Connect Instagram</a>
+        </p>
+      )}
+
+      {tiktok ? (
+        <p>
+          TikTok connected: <strong>{tiktok.displayName || tiktok.externalAccountId}</strong>
+        </p>
+      ) : (
+        <p>
+          No TikTok account connected yet. <a href="/api/tiktok/connect">Connect TikTok</a>
         </p>
       )}
 

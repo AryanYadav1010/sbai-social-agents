@@ -19,23 +19,28 @@ interface Post {
   externalMediaId: string | null;
   createdAt: string;
   performanceSnapshots: PerformanceSnapshot[];
+  account: { platform: "INSTAGRAM" | "TIKTOK" };
 }
 
 export default function ApprovalsClient({
   initialPosts,
-  hasAccount,
+  hasAccounts,
 }: {
   initialPosts: Post[];
-  hasAccount: boolean;
+  hasAccounts: { INSTAGRAM: boolean; TIKTOK: boolean };
 }) {
   const router = useRouter();
+  const [platform, setPlatform] = useState<"INSTAGRAM" | "TIKTOK">("INSTAGRAM");
   const [topic, setTopic] = useState("");
   const [mediaSource, setMediaSource] = useState<"url" | "videoAgent">("url");
   const [mediaUrl, setMediaUrl] = useState("");
+  const [mediaType, setMediaType] = useState<"IMAGE" | "VIDEO">("IMAGE");
   const [videoAgentProductionId, setVideoAgentProductionId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [actioningId, setActioningId] = useState<string | null>(null);
+
+  const hasAccount = hasAccounts[platform];
 
   const handleCreateDraft = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,8 +49,8 @@ export default function ApprovalsClient({
     try {
       const body =
         mediaSource === "videoAgent"
-          ? { topic, videoAgentProductionId }
-          : { topic, mediaUrl };
+          ? { topic, videoAgentProductionId, platform }
+          : { topic, mediaUrl, mediaType, platform };
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -93,11 +98,28 @@ export default function ApprovalsClient({
     <div>
       {!hasAccount && (
         <p style={{ background: "#fff3cd", padding: 12, borderRadius: 6 }}>
-          No Instagram account connected. <a href="/api/meta/connect">Connect one first</a>.
+          No {platform === "TIKTOK" ? "TikTok" : "Instagram"} account connected.{" "}
+          <a href={platform === "TIKTOK" ? "/api/tiktok/connect" : "/api/meta/connect"}>Connect one first</a>.
         </p>
       )}
 
       <form onSubmit={handleCreateDraft} style={{ margin: "24px 0", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", gap: 16 }}>
+          <label>
+            <input type="radio" checked={platform === "INSTAGRAM"} onChange={() => setPlatform("INSTAGRAM")} /> Instagram
+          </label>
+          <label>
+            <input
+              type="radio"
+              checked={platform === "TIKTOK"}
+              onChange={() => {
+                setPlatform("TIKTOK");
+                setMediaType("VIDEO"); // TikTok's Content Posting API is video-only
+              }}
+            />{" "}
+            TikTok
+          </label>
+        </div>
         <label>
           Topic
           <input
@@ -128,16 +150,34 @@ export default function ApprovalsClient({
         </div>
 
         {mediaSource === "url" ? (
-          <label>
-            Media URL (must be publicly reachable)
-            <input
-              value={mediaUrl}
-              onChange={(e) => setMediaUrl(e.target.value)}
-              required
-              style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
-              placeholder="https://..."
-            />
-          </label>
+          <>
+            <label>
+              Media URL (must be publicly reachable)
+              <input
+                value={mediaUrl}
+                onChange={(e) => setMediaUrl(e.target.value)}
+                required
+                style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
+                placeholder="https://..."
+              />
+            </label>
+            {platform === "INSTAGRAM" && (
+              <label>
+                Media type
+                <select
+                  value={mediaType}
+                  onChange={(e) => setMediaType(e.target.value as "IMAGE" | "VIDEO")}
+                  style={{ display: "block", padding: 8, marginTop: 4 }}
+                >
+                  <option value="IMAGE">Image</option>
+                  <option value="VIDEO">Video (Reels)</option>
+                </select>
+              </label>
+            )}
+            {platform === "TIKTOK" && (
+              <span style={{ fontSize: 12, color: "#666" }}>TikTok posts are always video.</span>
+            )}
+          </>
         ) : (
           <label>
             Video Agent production ID
@@ -164,7 +204,8 @@ export default function ApprovalsClient({
       {initialPosts.map((post) => (
         <div key={post.id} style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, marginBottom: 12 }}>
           <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
-            {post.status} · {new Date(post.createdAt).toLocaleString()}
+            {post.account.platform === "TIKTOK" ? "TikTok" : "Instagram"} · {post.status} ·{" "}
+            {new Date(post.createdAt).toLocaleString()}
           </div>
           <div style={{ fontWeight: 600, marginBottom: 4 }}>{post.topic}</div>
           <div style={{ fontSize: 12, marginBottom: 6 }}>
