@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAdminSession } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import ApprovalsClient from "@/components/ApprovalsClient";
@@ -9,7 +10,7 @@ export default async function ApprovalsPage() {
   if (!session) {
     return (
       <main style={{ padding: 40 }}>
-        <p>Unauthorized. <a href="/api/auth/signin">Sign in</a></p>
+        <p>Unauthorized. <Link href="/api/auth/signin">Sign in</Link></p>
       </main>
     );
   }

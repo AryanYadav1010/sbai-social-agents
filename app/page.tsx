@@ -12,7 +12,7 @@ export default async function Home() {
       <main style={{ padding: 40, maxWidth: 480, margin: "0 auto" }}>
         <h1>SB AI Systems — Social Agents</h1>
         <p>Sign in with an admin Google account to continue.</p>
-        <a href="/api/auth/signin">Sign in</a>
+        <Link href="/api/auth/signin">Sign in</Link>
       </main>
     );
   }
