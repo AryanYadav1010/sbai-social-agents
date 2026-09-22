@@ -275,6 +275,17 @@ export default function ApprovalsClient({
                 </button>
               </div>
             )}
+            {post.status === "PUBLISH_FAILED" && (
+              <div className="mt-4">
+                <button
+                  onClick={() => handleApprove(post.id)}
+                  disabled={actioningId === post.id}
+                  className="rounded-md bg-amber-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {actioningId === post.id ? "Retrying..." : "Retry publish"}
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

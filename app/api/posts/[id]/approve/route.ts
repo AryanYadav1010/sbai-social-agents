@@ -15,8 +15,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const post = await prisma.socialPost.findUnique({ where: { id } });
   if (!post) return NextResponse.json({ error: "Post not found." }, { status: 404 });
-  if (post.status !== "PENDING_APPROVAL") {
-    return NextResponse.json({ error: `Post is ${post.status}, not PENDING_APPROVAL.` }, { status: 400 });
+  // PUBLISH_FAILED is retryable from here -- it already passed compliance
+  // and human approval once; the platform API call itself is what failed,
+  // so re-running just that step doesn't need a second approval decision.
+  if (post.status !== "PENDING_APPROVAL" && post.status !== "PUBLISH_FAILED") {
+    return NextResponse.json({ error: `Post is ${post.status}, not PENDING_APPROVAL or PUBLISH_FAILED.` }, { status: 400 });
   }
 
   await prisma.socialPost.update({ where: { id }, data: { status: "APPROVED" } });
