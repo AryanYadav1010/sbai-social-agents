@@ -9,8 +9,13 @@ export default async function ApprovalsPage() {
   const session = await requireAdminSession();
   if (!session) {
     return (
-      <main style={{ padding: 40 }}>
-        <p>Unauthorized. <Link href="/api/auth/signin">Sign in</Link></p>
+      <main className="mx-auto max-w-md px-6 py-24 text-center">
+        <p className="text-slate-500">
+          Unauthorized.{" "}
+          <Link href="/api/auth/signin" className="font-medium text-indigo-600 hover:text-indigo-500">
+            Sign in
+          </Link>
+        </p>
       </main>
     );
   }
@@ -29,12 +34,14 @@ export default async function ApprovalsPage() {
   const hasAccounts = { INSTAGRAM: Boolean(account), TIKTOK: Boolean(tiktokAccount) };
 
   return (
-    <main style={{ padding: 40, maxWidth: 720, margin: "0 auto" }}>
-      <h1>Approvals</h1>
-      <p style={{ color: "#666" }}>
+    <main className="mx-auto max-w-3xl px-6 py-10">
+      <h1 className="text-2xl font-semibold text-slate-900">Approvals</h1>
+      <p className="mt-1 text-sm text-slate-500">
         Mode 1: nothing publishes to Instagram or TikTok without an explicit approval here.
       </p>
-      <BusinessProfileEditor initialProfile={(account?.audienceProfile as AudienceProfile | null) ?? null} />
+      <div className="mt-6">
+        <BusinessProfileEditor initialProfile={(account?.audienceProfile as AudienceProfile | null) ?? null} />
+      </div>
       <ApprovalsClient
         initialPosts={JSON.parse(JSON.stringify(posts))}
         hasAccounts={hasAccounts}

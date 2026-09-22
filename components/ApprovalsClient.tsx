@@ -22,6 +22,28 @@ interface Post {
   account: { platform: "INSTAGRAM" | "TIKTOK" };
 }
 
+const STATUS_STYLES: Record<string, string> = {
+  DRAFT: "bg-slate-100 text-slate-600",
+  COMPLIANCE_REJECTED: "bg-rose-50 text-rose-700",
+  PENDING_APPROVAL: "bg-amber-50 text-amber-700",
+  APPROVED: "bg-blue-50 text-blue-700",
+  REJECTED: "bg-rose-50 text-rose-700",
+  PUBLISHED: "bg-emerald-50 text-emerald-700",
+  PUBLISH_FAILED: "bg-rose-50 text-rose-700",
+};
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[status] ?? "bg-slate-100 text-slate-600"}`}>
+      {status.replaceAll("_", " ").toLowerCase()}
+    </span>
+  );
+}
+
+function fieldClass(extra = "") {
+  return `block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${extra}`;
+}
+
 export default function ApprovalsClient({
   initialPosts,
   hasAccounts,
@@ -97,151 +119,165 @@ export default function ApprovalsClient({
   return (
     <div>
       {!hasAccount && (
-        <p style={{ background: "#fff3cd", padding: 12, borderRadius: 6 }}>
+        <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           No {platform === "TIKTOK" ? "TikTok" : "Instagram"} account connected.{" "}
-          <a href={platform === "TIKTOK" ? "/api/tiktok/connect" : "/api/meta/connect"}>Connect one first</a>.
+          <a href={platform === "TIKTOK" ? "/api/tiktok/connect" : "/api/meta/connect"} className="font-medium underline">
+            Connect one first
+          </a>
+          .
         </p>
       )}
 
-      <form onSubmit={handleCreateDraft} style={{ margin: "24px 0", display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ display: "flex", gap: 16 }}>
-          <label>
-            <input type="radio" checked={platform === "INSTAGRAM"} onChange={() => setPlatform("INSTAGRAM")} /> Instagram
-          </label>
-          <label>
-            <input
-              type="radio"
-              checked={platform === "TIKTOK"}
-              onChange={() => {
-                setPlatform("TIKTOK");
-                setMediaType("VIDEO"); // TikTok's Content Posting API is video-only
+      <form onSubmit={handleCreateDraft} className="mt-6 flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="inline-flex w-fit rounded-lg bg-slate-100 p-1 text-sm font-medium">
+          {(["INSTAGRAM", "TIKTOK"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => {
+                setPlatform(p);
+                if (p === "TIKTOK") setMediaType("VIDEO");
               }}
-            />{" "}
-            TikTok
-          </label>
+              className={`rounded-md px-4 py-1.5 transition-colors ${
+                platform === p ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {p === "INSTAGRAM" ? "Instagram" : "TikTok"}
+            </button>
+          ))}
         </div>
-        <label>
+
+        <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
           Topic
           <input
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             required
-            style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
+            className={fieldClass()}
             placeholder="e.g. Why service businesses lose leads over the weekend"
           />
         </label>
-        <div style={{ display: "flex", gap: 16 }}>
-          <label>
-            <input
-              type="radio"
-              checked={mediaSource === "url"}
-              onChange={() => setMediaSource("url")}
-            />{" "}
-            Image/video URL
+
+        <div className="flex gap-5 text-sm text-slate-600">
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={mediaSource === "url"} onChange={() => setMediaSource("url")} /> Image/video URL
           </label>
-          <label>
-            <input
-              type="radio"
-              checked={mediaSource === "videoAgent"}
-              onChange={() => setMediaSource("videoAgent")}
-            />{" "}
-            Video Agent production
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={mediaSource === "videoAgent"} onChange={() => setMediaSource("videoAgent")} /> Video
+            Agent production
           </label>
         </div>
 
         {mediaSource === "url" ? (
           <>
-            <label>
+            <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
               Media URL (must be publicly reachable)
               <input
                 value={mediaUrl}
                 onChange={(e) => setMediaUrl(e.target.value)}
                 required
-                style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
+                className={fieldClass()}
                 placeholder="https://..."
               />
             </label>
             {platform === "INSTAGRAM" && (
-              <label>
+              <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                 Media type
                 <select
                   value={mediaType}
                   onChange={(e) => setMediaType(e.target.value as "IMAGE" | "VIDEO")}
-                  style={{ display: "block", padding: 8, marginTop: 4 }}
+                  className={fieldClass("w-auto")}
                 >
                   <option value="IMAGE">Image</option>
                   <option value="VIDEO">Video (Reels)</option>
                 </select>
               </label>
             )}
-            {platform === "TIKTOK" && (
-              <span style={{ fontSize: 12, color: "#666" }}>TikTok posts are always video.</span>
-            )}
+            {platform === "TIKTOK" && <span className="text-xs text-slate-500">TikTok posts are always video.</span>}
           </>
         ) : (
-          <label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
             Video Agent production ID
             <input
               value={videoAgentProductionId}
               onChange={(e) => setVideoAgentProductionId(e.target.value)}
               required
-              style={{ display: "block", width: "100%", padding: 8, marginTop: 4 }}
+              className={fieldClass()}
               placeholder="production ID from the Video Agent app"
             />
-            <span style={{ fontSize: 12, color: "#666" }}>
+            <span className="text-xs font-normal text-slate-500">
               Generate the video in the separate Video Agent app first, then paste its production ID here.
             </span>
           </label>
         )}
-        {error && <p style={{ color: "#b42318" }}>{error}</p>}
-        <button type="submit" disabled={submitting || !hasAccount} style={{ padding: "8px 16px" }}>
+
+        {error && <p className="text-sm text-rose-600">{error}</p>}
+
+        <button
+          type="submit"
+          disabled={submitting || !hasAccount}
+          className="self-start rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
           {submitting ? "Drafting..." : "Draft with Content Creation Agent"}
         </button>
       </form>
 
-      <h2>Posts</h2>
-      {initialPosts.length === 0 && <p>No posts yet.</p>}
-      {initialPosts.map((post) => (
-        <div key={post.id} style={{ border: "1px solid #ddd", borderRadius: 8, padding: 16, marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
-            {post.account.platform === "TIKTOK" ? "TikTok" : "Instagram"} · {post.status} ·{" "}
-            {new Date(post.createdAt).toLocaleString()}
-          </div>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>{post.topic}</div>
-          <div style={{ fontSize: 12, marginBottom: 6 }}>
-            {post.mediaType === "VIDEO" ? "🎬 Video" : "🖼️ Image"} ·{" "}
-            <a href={post.mediaUrl} target="_blank" rel="noreferrer">
-              media
-            </a>
-            {post.videoAgentProductionId && ` (Video Agent: ${post.videoAgentProductionId})`}
-          </div>
-          <p style={{ whiteSpace: "pre-wrap" }}>{post.caption}</p>
-          {post.complianceVerdict && !post.complianceVerdict.passed && (
-            <ul style={{ color: "#b42318" }}>
-              {post.complianceVerdict.reasons.map((r, i) => (
-                <li key={i}>{r}</li>
-              ))}
-            </ul>
-          )}
-          <TrendAudiencePanel trendContext={post.trendContext} audienceContext={post.audienceContext} />
-          {post.status === "PUBLISHED" && (
-            <>
-              <p style={{ color: "#16803d" }}>Published — media ID {post.externalMediaId}</p>
-              <AnalyticsPanel postId={post.id} latestSnapshot={post.performanceSnapshots[0] ?? null} />
-            </>
-          )}
-          {post.status === "PENDING_APPROVAL" && (
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <button onClick={() => handleApprove(post.id)} disabled={actioningId === post.id}>
-                Approve & Publish
-              </button>
-              <button onClick={() => handleReject(post.id)} disabled={actioningId === post.id}>
-                Reject
-              </button>
+      <h2 className="mt-10 text-lg font-semibold text-slate-900">Posts</h2>
+      {initialPosts.length === 0 && <p className="mt-2 text-sm text-slate-500">No posts yet.</p>}
+      <div className="mt-4 flex flex-col gap-4">
+        {initialPosts.map((post) => (
+          <div key={post.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span className="font-medium text-slate-700">{post.account.platform === "TIKTOK" ? "TikTok" : "Instagram"}</span>
+              <span>·</span>
+              <StatusBadge status={post.status} />
+              <span>·</span>
+              <span>{new Date(post.createdAt).toLocaleString()}</span>
             </div>
-          )}
-        </div>
-      ))}
+            <div className="mt-2 font-medium text-slate-900">{post.topic}</div>
+            <div className="mt-1 text-xs text-slate-500">
+              {post.mediaType === "VIDEO" ? "🎬 Video" : "🖼️ Image"} ·{" "}
+              <a href={post.mediaUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+                media
+              </a>
+              {post.videoAgentProductionId && ` (Video Agent: ${post.videoAgentProductionId})`}
+            </div>
+            <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{post.caption}</p>
+            {post.complianceVerdict && !post.complianceVerdict.passed && (
+              <ul className="mt-3 list-inside list-disc rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
+                {post.complianceVerdict.reasons.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            )}
+            <TrendAudiencePanel trendContext={post.trendContext} audienceContext={post.audienceContext} />
+            {post.status === "PUBLISHED" && (
+              <>
+                <p className="mt-3 text-sm font-medium text-emerald-700">Published — media ID {post.externalMediaId}</p>
+                <AnalyticsPanel postId={post.id} latestSnapshot={post.performanceSnapshots[0] ?? null} />
+              </>
+            )}
+            {post.status === "PENDING_APPROVAL" && (
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={() => handleApprove(post.id)}
+                  disabled={actioningId === post.id}
+                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  Approve & Publish
+                </button>
+                <button
+                  onClick={() => handleReject(post.id)}
+                  disabled={actioningId === post.id}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Reject
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

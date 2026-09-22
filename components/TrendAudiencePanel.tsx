@@ -26,16 +26,16 @@ export default function TrendAudiencePanel({
   if (!trendContext && !audienceContext) return null;
 
   return (
-    <div style={{ marginTop: 8, padding: "8px 12px", background: "#f2f5fb", borderRadius: 6, fontSize: 12 }}>
+    <div className="mt-3 flex flex-col gap-3 rounded-lg bg-indigo-50/60 p-3 text-xs">
       {trendContext && (
-        <div style={{ marginBottom: audienceContext ? 6 : 0 }}>
-          <strong>Trend Agent:</strong> {trendContext.angle}
-          {trendContext.reasoning && <div style={{ color: "#555" }}>{trendContext.reasoning}</div>}
+        <div>
+          <span className="font-semibold text-slate-700">Trend Agent:</span> <span className="text-slate-600">{trendContext.angle}</span>
+          {trendContext.reasoning && <div className="mt-0.5 text-slate-500">{trendContext.reasoning}</div>}
           {trendContext.suggestedHashtags && trendContext.suggestedHashtags.length > 0 && (
-            <div style={{ color: "#555" }}>Hashtags: {trendContext.suggestedHashtags.join(" ")}</div>
+            <div className="mt-0.5 text-slate-500">Hashtags: {trendContext.suggestedHashtags.join(" ")}</div>
           )}
           {trendContext.hashtagEnrichment && (
-            <div style={{ color: trendContext.hashtagEnrichment.available ? "#16803d" : "#888" }}>
+            <div className={`mt-0.5 ${trendContext.hashtagEnrichment.available ? "text-emerald-700" : "text-slate-400"}`}>
               {trendContext.hashtagEnrichment.available
                 ? "✓ Enriched with real Instagram hashtag data"
                 : `Hashtag research unavailable — reasoning-only (${trendContext.hashtagEnrichment.reason ?? "no reason given"})`}
@@ -45,10 +45,11 @@ export default function TrendAudiencePanel({
       )}
       {audienceContext && (
         <div>
-          <strong>Audience Agent:</strong> {audienceContext.targetingNotes}
-          {audienceContext.toneAdjustments && <div style={{ color: "#555" }}>Tone: {audienceContext.toneAdjustments}</div>}
+          <span className="font-semibold text-slate-700">Audience Agent:</span>{" "}
+          <span className="text-slate-600">{audienceContext.targetingNotes}</span>
+          {audienceContext.toneAdjustments && <div className="mt-0.5 text-slate-500">Tone: {audienceContext.toneAdjustments}</div>}
           {audienceContext.callToActionSuggestion && (
-            <div style={{ color: "#555" }}>CTA: {audienceContext.callToActionSuggestion}</div>
+            <div className="mt-0.5 text-slate-500">CTA: {audienceContext.callToActionSuggestion}</div>
           )}
         </div>
       )}

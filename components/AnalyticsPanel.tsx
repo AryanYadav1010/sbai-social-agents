@@ -36,10 +36,10 @@ export default function AnalyticsPanel({ postId, latestSnapshot }: { postId: str
   };
 
   return (
-    <div style={{ marginTop: 8, padding: "8px 12px", background: "#f7f9fb", borderRadius: 6, fontSize: 12 }}>
+    <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs">
       {latestSnapshot ? (
         <>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 4 }}>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-700">
             {latestSnapshot.likeCount != null && <span>❤️ {latestSnapshot.likeCount}</span>}
             {latestSnapshot.commentsCount != null && <span>💬 {latestSnapshot.commentsCount}</span>}
             {latestSnapshot.savedCount != null && <span>🔖 {latestSnapshot.savedCount}</span>}
@@ -47,16 +47,20 @@ export default function AnalyticsPanel({ postId, latestSnapshot }: { postId: str
             {latestSnapshot.reach != null && <span>👁️ reach {latestSnapshot.reach}</span>}
             {latestSnapshot.totalInteractions != null && <span>Σ {latestSnapshot.totalInteractions}</span>}
           </div>
-          <div style={{ color: "#888" }}>
+          <div className="mt-1 text-slate-400">
             As of {new Date(latestSnapshot.fetchedAt).toLocaleString()}
             {latestSnapshot.unavailableFields.length > 0 && ` · unavailable: ${latestSnapshot.unavailableFields.join(", ")}`}
           </div>
         </>
       ) : (
-        <div style={{ color: "#888" }}>No analytics fetched yet.</div>
+        <div className="text-slate-400">No analytics fetched yet.</div>
       )}
-      {error && <p style={{ color: "#b42318", marginTop: 4 }}>{error}</p>}
-      <button onClick={handleRefresh} disabled={refreshing} style={{ marginTop: 6, padding: "4px 10px", fontSize: 12 }}>
+      {error && <p className="mt-1 text-rose-600">{error}</p>}
+      <button
+        onClick={handleRefresh}
+        disabled={refreshing}
+        className="mt-2 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+      >
         {refreshing ? "Refreshing..." : "Refresh analytics"}
       </button>
     </div>
