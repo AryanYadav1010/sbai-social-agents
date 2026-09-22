@@ -13,6 +13,7 @@ export function isContentCreationConfigured(): boolean {
 }
 
 export interface DraftContext {
+  platform?: "INSTAGRAM" | "TIKTOK";
   trendSuggestion?: { angle?: string; format?: string; suggestedHashtags?: string[]; reasoning?: string };
   audienceGuidance?: { targetingNotes?: string; toneAdjustments?: string; callToActionSuggestion?: string };
   brandVoiceOverride?: string;
@@ -23,6 +24,7 @@ export async function draftInstagramCaption(topic: string, context?: DraftContex
     throw new Error("Content Creation Agent is not configured (missing ANTHROPIC_API_KEY).");
   }
 
+  const platformLabel = context?.platform === "TIKTOK" ? "TikTok" : "Instagram";
   const client = new Anthropic({ apiKey: API_KEY });
 
   const guidanceLines: string[] = [];
@@ -47,8 +49,8 @@ export async function draftInstagramCaption(topic: string, context?: DraftContex
     model: MODEL,
     max_tokens: 400,
     system:
-      "You are the Content Creation Agent for SB AI Systems' Instagram account. " +
-      "Write a single Instagram caption for the given topic: warm, direct, no corporate " +
+      `You are the Content Creation Agent for SB AI Systems' ${platformLabel} account. ` +
+      `Write a single ${platformLabel} caption for the given topic: warm, direct, no corporate ` +
       "language, 2-4 short sentences, end with 2-4 relevant hashtags on their own line. " +
       "Never invent specific facts, prices, or claims you weren't given. Output ONLY the " +
       "caption text -- no preamble, no explanation, no quotation marks around it.",

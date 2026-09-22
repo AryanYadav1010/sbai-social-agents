@@ -21,6 +21,7 @@ import { generateAudienceGuidance, type AudienceGuidance, type AudienceProfile }
 
 const DraftState = Annotation.Root({
   topic: Annotation<string>(),
+  platform: Annotation<"INSTAGRAM" | "TIKTOK">(),
   accessToken: Annotation<string | undefined>(),
   audienceProfile: Annotation<AudienceProfile | null | undefined>(),
   performanceHistorySummary: Annotation<string | undefined>(),
@@ -34,6 +35,7 @@ async function trendNode(state: typeof DraftState.State) {
   try {
     const trendSuggestion = await generateTrendSuggestion({
       topic: state.topic,
+      platform: state.platform,
       performanceHistorySummary: state.performanceHistorySummary,
       accessToken: state.accessToken,
     });
@@ -58,6 +60,7 @@ async function audienceNode(state: typeof DraftState.State) {
 
 async function socialAgentNode(state: typeof DraftState.State) {
   const caption = await draftInstagramCaption(state.topic, {
+    platform: state.platform,
     trendSuggestion: state.trendSuggestion,
     audienceGuidance: state.audienceGuidance,
     brandVoiceOverride: state.audienceProfile?.brandVoice,
@@ -69,7 +72,7 @@ async function checkComplianceNode(state: typeof DraftState.State) {
   if (!state.caption) {
     throw new Error("checkComplianceNode reached with no caption drafted.");
   }
-  const complianceVerdict = await checkCompliance(state.caption);
+  const complianceVerdict = await checkCompliance(state.caption, state.platform);
   return { complianceVerdict };
 }
 
@@ -95,12 +98,14 @@ export interface DraftResult {
 
 export async function runDraftGraph(opts: {
   topic: string;
+  platform: "INSTAGRAM" | "TIKTOK";
   accessToken?: string;
   audienceProfile?: AudienceProfile | null;
   performanceHistorySummary?: string;
 }): Promise<DraftResult> {
   const result = await graph.invoke({
     topic: opts.topic,
+    platform: opts.platform,
     accessToken: opts.accessToken,
     audienceProfile: opts.audienceProfile,
     performanceHistorySummary: opts.performanceHistorySummary,

@@ -20,17 +20,18 @@ const BANNED_PATTERNS: { pattern: RegExp; reason: string }[] = [
   { pattern: /\b(send us your (password|card|bank) details?)\b/i, reason: "Solicits sensitive personal/financial information." },
 ];
 
-const MAX_CAPTION_LENGTH = 2200; // Instagram's actual caption limit
+const MAX_CAPTION_LENGTH = 2200; // Both Instagram's and TikTok's current caption limit
 
-export async function checkCompliance(caption: string): Promise<ComplianceVerdict> {
+export async function checkCompliance(caption: string, platform: "INSTAGRAM" | "TIKTOK" = "INSTAGRAM"): Promise<ComplianceVerdict> {
   const reasons: string[] = [];
+  const platformLabel = platform === "TIKTOK" ? "TikTok" : "Instagram";
 
   for (const { pattern, reason } of BANNED_PATTERNS) {
     if (pattern.test(caption)) reasons.push(reason);
   }
 
   if (caption.length > MAX_CAPTION_LENGTH) {
-    reasons.push(`Caption is ${caption.length} characters, exceeds Instagram's ${MAX_CAPTION_LENGTH}-character limit.`);
+    reasons.push(`Caption is ${caption.length} characters, exceeds ${platformLabel}'s ${MAX_CAPTION_LENGTH}-character limit.`);
   }
 
   if (reasons.length > 0) {
@@ -44,7 +45,7 @@ export async function checkCompliance(caption: string): Promise<ComplianceVerdic
     return { passed: true, reasons: [], checkedAt: new Date().toISOString() };
   }
 
-  const llmReasons = await runNuanceCheck(caption);
+  const llmReasons = await runNuanceCheck(caption, platformLabel);
   return {
     passed: llmReasons.length === 0,
     reasons: llmReasons,
@@ -52,14 +53,14 @@ export async function checkCompliance(caption: string): Promise<ComplianceVerdic
   };
 }
 
-async function runNuanceCheck(caption: string): Promise<string[]> {
+async function runNuanceCheck(caption: string, platformLabel: string): Promise<string[]> {
   try {
     const client = new Anthropic({ apiKey: API_KEY! });
     const res = await client.messages.create({
       model: MODEL,
       max_tokens: 300,
       system:
-        "You are the Compliance & Policy Agent for SB AI Systems' Instagram account. " +
+        `You are the Compliance & Policy Agent for SB AI Systems' ${platformLabel} account. ` +
         "Review the caption for: misleading claims, competitor disparagement, off-brand " +
         "tone (should be warm, direct, no corporate jargon), or anything a reasonable " +
         "brand-safety reviewer would flag. Respond with ONLY this JSON, no other text: " +

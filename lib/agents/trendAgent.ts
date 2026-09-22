@@ -44,12 +44,15 @@ function neutralTrendSuggestion(topic: string, reasoning: string): TrendSuggesti
 // enrichment below, never a dependency).
 export async function generateTrendSuggestion(opts: {
   topic: string;
+  platform: "INSTAGRAM" | "TIKTOK";
   performanceHistorySummary?: string;
   accessToken?: string;
 }): Promise<TrendSuggestion> {
   if (!API_KEY) {
     return neutralTrendSuggestion(opts.topic, "Trend Agent unavailable (not configured) -- using topic as-is.");
   }
+
+  const platformLabel = opts.platform === "TIKTOK" ? "TikTok" : "Instagram";
 
   let suggestion: TrendSuggestion;
   try {
@@ -62,10 +65,10 @@ export async function generateTrendSuggestion(opts: {
       model: MODEL,
       max_tokens: 400,
       system:
-        "You are the Trend Agent for SB AI Systems' Instagram account. Given a topic, reason about " +
+        `You are the Trend Agent for SB AI Systems' ${platformLabel} account. Given a topic, reason about ` +
         "what angle, format, and hashtags are likely to perform well for a UK service-business " +
         "audience -- informed by real past performance data when given. You have no live trend " +
-        "feed; reason from general knowledge of what tends to work on Instagram, not fabricated " +
+        `feed; reason from general knowledge of what tends to work on ${platformLabel}, not fabricated ` +
         'real-time claims. Respond with ONLY this JSON, no other text: {"angle": "...", "format": ' +
         '"IMAGE"|"VIDEO"|"either", "suggestedHashtags": ["tag1","tag2"], "reasoning": "..."}.',
       messages: [{ role: "user", content: `Topic: ${opts.topic}${historyBlock}` }],
@@ -96,7 +99,12 @@ export async function generateTrendSuggestion(opts: {
     );
   }
 
-  suggestion.hashtagEnrichment = await queryHashtagEnrichment(suggestion.suggestedHashtags.slice(0, 3), opts.accessToken);
+  // Instagram's Hashtag Search API only -- there is no TikTok equivalent
+  // wired here, and it would reject a TikTok access token anyway.
+  suggestion.hashtagEnrichment =
+    opts.platform === "INSTAGRAM"
+      ? await queryHashtagEnrichment(suggestion.suggestedHashtags.slice(0, 3), opts.accessToken)
+      : { available: false, reason: "Hashtag Search enrichment is Instagram-only." };
   return suggestion;
 }
 

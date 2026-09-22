@@ -28,8 +28,12 @@ export async function createDraftPost(opts: {
   const performanceHistorySummary = await getPerformanceHistorySummary(opts.accountId);
   const accessToken = account.accessTokenEncrypted ? decryptToken(account.accessTokenEncrypted) : undefined;
 
+  // FACEBOOK/YOUTUBE are reserved enum values for later phases (see
+  // schema.prisma) -- no code path creates a SocialAccount with those yet,
+  // so this narrowing always holds today.
   const { caption, complianceVerdict, trendSuggestion, audienceGuidance } = await runDraftGraph({
     topic: opts.topic,
+    platform: account.platform as "INSTAGRAM" | "TIKTOK",
     accessToken,
     audienceProfile,
     performanceHistorySummary,
