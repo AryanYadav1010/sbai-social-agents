@@ -3,10 +3,11 @@ import { requireAdminSession } from "@/lib/rbac";
 
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY;
 
-// video.publish -- Direct Post, true auto-publish with no manual step in
-// the TikTok app. Enabled on the app's Sandbox Content Posting API config,
-// which is why this works for the Sandbox target user without needing
-// TikTok's app-review process.
+// video.upload (not video.publish) -- sends to the user's private TikTok
+// inbox as a draft, needs no TikTok app review. Reverted from Direct Post
+// (video.publish) 2026-09-23 -- that pathway itself rejected posts with a
+// content-guidelines error even for an already-proven-good video; see
+// tiktokEcosystem.ts for the full story.
 export async function GET(req: NextRequest) {
   const session = await requireAdminSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
   }
 
   const redirectUri = new URL("/api/tiktok/callback", req.url).toString();
-  const scopes = ["user.info.basic", "video.publish"].join(",");
+  const scopes = ["user.info.basic", "video.upload"].join(",");
 
   const authUrl = new URL("https://www.tiktok.com/v2/auth/authorize/");
   authUrl.searchParams.set("client_key", TIKTOK_CLIENT_KEY);

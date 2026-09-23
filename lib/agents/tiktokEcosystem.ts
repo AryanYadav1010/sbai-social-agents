@@ -1,12 +1,20 @@
 // Level 2 Meta Ecosystem Agent's TikTok sibling. Same thin hand-rolled fetch
 // client style as metaEcosystem.ts -- no SDK, just the exact calls this
-// integration needs against TikTok's Content Posting API v2 (Direct Post).
+// integration needs against TikTok's Content Posting API v2.
 //
-// Direct Post (video.publish scope) -- true one-tap auto-publish, no human
-// action inside the TikTok app needed -- enabled on both the app's Sandbox
-// and Production Content Posting API config. Sandbox testing with a
-// whitelisted target user doesn't require TikTok's own app-review process
-// the way going live for the general public would.
+// Reverted from Direct Post back to the inbox/draft endpoint (2026-09-23):
+// Direct Post (video.publish scope) was enabled on Sandbox and the OAuth
+// scope/token issues were real and got fixed, but TikTok's own API then
+// rejected the post/init call itself with a generic content-guidelines
+// error -- reproduced with a video that had already published successfully
+// through the inbox endpoint minutes earlier, so it's specific to the
+// Direct Post pathway (likely stricter guideline enforcement Sandbox's
+// "Direct Post" toggle doesn't actually bypass), not the video file. Needs
+// real investigation time this wasn't the moment for. The inbox endpoint
+// needs no review and is proven working: the agent pushes the video into
+// the connected account's TikTok inbox as a ready-to-post draft, a human
+// taps Post inside the TikTok app to finish. See git history to retry
+// Direct Post (video/init/ with post_info + privacy-level lookup).
 //
 // FILE_UPLOAD, not PULL_FROM_URL, as the source: PULL_FROM_URL requires
 // verifying domain ownership of the media host in TikTok's developer
@@ -76,30 +84,6 @@ export interface PublishResult {
   error?: string;
 }
 
-// Unaudited apps can only publish as SELF_ONLY (private, visible only to
-// the creator) until TikTok reviews the app for public posting -- querying
-// creator_info tells us which privacy levels this specific account/app
-// combination is actually allowed to use, so we pick a valid one instead of
-// guessing and having the post/init call reject it.
-async function pickPrivacyLevel(accessToken: string): Promise<{ ok: boolean; privacyLevel?: string; error?: string }> {
-  try {
-    const res = await fetch(`${TIKTOK_API_BASE}/post/publish/creator_info/query/`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json; charset=UTF-8" },
-    });
-    const data = await res.json();
-    if (!res.ok || data?.error?.code !== "ok") {
-      return { ok: false, error: data?.error?.message || `Failed to query TikTok creator info (${res.status}).` };
-    }
-    const options: string[] = data.data?.privacy_level_options || [];
-    const privacyLevel = options.includes("PUBLIC_TO_EVERYONE") ? "PUBLIC_TO_EVERYONE" : options[0];
-    if (!privacyLevel) return { ok: false, error: "TikTok returned no available privacy levels for this account." };
-    return { ok: true, privacyLevel };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Unknown error querying TikTok creator info." };
-  }
-}
-
 async function waitForPublishComplete(
   publishId: string,
   accessToken: string,
@@ -131,35 +115,24 @@ async function waitForPublishComplete(
 }
 
 // Video-only, per TikTok's Content Posting API -- there is no image-post
-// path used here.
+// path used here. `caption` isn't sent to TikTok: the inbox/draft endpoint
+// carries no post_info (title, privacy, etc.) -- the human sets those
+// inside the TikTok app when they tap Post.
 export async function publishTikTokVideo(
   accessToken: string,
   opts: { mediaUrl: string; caption: string }
 ): Promise<PublishResult> {
   try {
-    const privacy = await pickPrivacyLevel(accessToken);
-    if (!privacy.ok || !privacy.privacyLevel) {
-      return { ok: false, error: privacy.error || "Could not determine an allowed TikTok privacy level." };
-    }
-
     const videoRes = await fetch(opts.mediaUrl);
     if (!videoRes.ok) {
       return { ok: false, error: `Could not fetch video from ${opts.mediaUrl} (${videoRes.status}).` };
     }
     const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
 
-    const initRes = await fetch(`${TIKTOK_API_BASE}/post/publish/video/init/`, {
+    const initRes = await fetch(`${TIKTOK_API_BASE}/post/publish/inbox/video/init/`, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json; charset=UTF-8" },
       body: JSON.stringify({
-        post_info: {
-          title: opts.caption,
-          privacy_level: privacy.privacyLevel,
-          disable_duet: false,
-          disable_comment: false,
-          disable_stitch: false,
-          video_cover_timestamp_ms: 1000,
-        },
         source_info: {
           source: "FILE_UPLOAD",
           video_size: videoBuffer.length,
