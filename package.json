@@ -16,6 +16,7 @@
     "@langchain/langgraph": "^1.4.9",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "@vercel/blob": "^2.8.0",
     "next": "^16.3.0",
     "next-auth": "^4.24.15",
     "pg": "^8.22.0",

@@ -54,11 +54,13 @@ export default function ApprovalsClient({
   const router = useRouter();
   const [platform, setPlatform] = useState<"INSTAGRAM" | "TIKTOK">("INSTAGRAM");
   const [topic, setTopic] = useState("");
-  const [mediaSource, setMediaSource] = useState<"url" | "videoAgent">("url");
+  const [mediaSource, setMediaSource] = useState<"upload" | "url" | "videoAgent">("upload");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [mediaUrl, setMediaUrl] = useState("");
   const [mediaType, setMediaType] = useState<"IMAGE" | "VIDEO">("IMAGE");
   const [videoAgentProductionId, setVideoAgentProductionId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
   const [error, setError] = useState("");
   const [actioningId, setActioningId] = useState<string | null>(null);
 
@@ -69,10 +71,32 @@ export default function ApprovalsClient({
     setError("");
     setSubmitting(true);
     try {
+      let resolvedMediaUrl = mediaUrl;
+      let resolvedMediaType = mediaType;
+
+      if (mediaSource === "upload") {
+        if (!uploadFile) {
+          setError("Choose a file to upload.");
+          return;
+        }
+        setUploadProgress("Uploading file...");
+        const uploadBody = new FormData();
+        uploadBody.append("file", uploadFile);
+        const uploadRes = await fetch("/api/upload", { method: "POST", body: uploadBody });
+        const uploadData = await uploadRes.json();
+        setUploadProgress("");
+        if (!uploadRes.ok) {
+          setError(uploadData.error || "Upload failed.");
+          return;
+        }
+        resolvedMediaUrl = uploadData.url;
+        resolvedMediaType = uploadData.mediaType;
+      }
+
       const body =
         mediaSource === "videoAgent"
           ? { topic, videoAgentProductionId, platform }
-          : { topic, mediaUrl, mediaType, platform };
+          : { topic, mediaUrl: resolvedMediaUrl, mediaType: resolvedMediaType, platform };
       const res = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -85,10 +109,12 @@ export default function ApprovalsClient({
       }
       setTopic("");
       setMediaUrl("");
+      setUploadFile(null);
       setVideoAgentProductionId("");
       router.refresh();
     } finally {
       setSubmitting(false);
+      setUploadProgress("");
     }
   };
 
@@ -158,7 +184,10 @@ export default function ApprovalsClient({
           />
         </label>
 
-        <div className="flex gap-5 text-sm text-slate-600">
+        <div className="flex flex-wrap gap-5 text-sm text-slate-600">
+          <label className="flex items-center gap-1.5">
+            <input type="radio" checked={mediaSource === "upload"} onChange={() => setMediaSource("upload")} /> Upload file
+          </label>
           <label className="flex items-center gap-1.5">
             <input type="radio" checked={mediaSource === "url"} onChange={() => setMediaSource("url")} /> Image/video URL
           </label>
@@ -168,7 +197,22 @@ export default function ApprovalsClient({
           </label>
         </div>
 
-        {mediaSource === "url" ? (
+        {mediaSource === "upload" && (
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            {platform === "TIKTOK" ? "Video file" : "Image or video file"}
+            <input
+              type="file"
+              accept={platform === "TIKTOK" ? "video/*" : "image/*,video/*"}
+              onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+              required
+              className={fieldClass("cursor-pointer file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-medium")}
+            />
+            {platform === "TIKTOK" && <span className="text-xs font-normal text-slate-500">TikTok posts are always video.</span>}
+            {uploadProgress && <span className="text-xs font-normal text-indigo-600">{uploadProgress}</span>}
+          </label>
+        )}
+
+        {mediaSource === "url" && (
           <>
             <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
               Media URL (must be publicly reachable)
@@ -195,7 +239,9 @@ export default function ApprovalsClient({
             )}
             {platform === "TIKTOK" && <span className="text-xs text-slate-500">TikTok posts are always video.</span>}
           </>
-        ) : (
+        )}
+
+        {mediaSource === "videoAgent" && (
           <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
             Video Agent production ID
             <input
