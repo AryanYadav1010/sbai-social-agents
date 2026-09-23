@@ -34,18 +34,27 @@ export async function GET(req: NextRequest) {
 
   const displayName = (await getTikTokDisplayName(token.accessToken)) ?? token.openId;
 
-  await prisma.socialAccount.create({
-    data: {
-      platform: "TIKTOK",
-      externalAccountId: token.openId,
-      displayName,
-      // Refresh token isn't persisted in v1 -- same as Instagram's long-lived
-      // token, this account just needs reconnecting via /api/tiktok/connect
-      // once the access token expires, no refresh cron in this project yet.
-      accessTokenEncrypted: encryptToken(token.accessToken),
-      tokenExpiresAt: token.expiresInSeconds ? new Date(Date.now() + token.expiresInSeconds * 1000) : null,
-    },
-  });
+  // Update in place if a TikTok account row already exists -- reconnecting
+  // (e.g. to grant a newly-added scope like video.publish) must replace the
+  // old token, not sit next to it as a second row that a plain findFirst()
+  // might still return instead of the fresh one. Not a delete+recreate:
+  // existing SocialPosts hold a foreign key to this row's id, so deleting
+  // it would break their history.
+  const existing = await prisma.socialAccount.findFirst({ where: { platform: "TIKTOK" } });
+  const accountData = {
+    externalAccountId: token.openId,
+    displayName,
+    // Refresh token isn't persisted in v1 -- same as Instagram's long-lived
+    // token, this account just needs reconnecting via /api/tiktok/connect
+    // once the access token expires, no refresh cron in this project yet.
+    accessTokenEncrypted: encryptToken(token.accessToken),
+    tokenExpiresAt: token.expiresInSeconds ? new Date(Date.now() + token.expiresInSeconds * 1000) : null,
+  };
+  if (existing) {
+    await prisma.socialAccount.update({ where: { id: existing.id }, data: accountData });
+  } else {
+    await prisma.socialAccount.create({ data: { platform: "TIKTOK", ...accountData } });
+  }
 
   await logAudit({
     actorEmail: session.user?.email,
