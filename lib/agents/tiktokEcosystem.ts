@@ -2,19 +2,16 @@
 // client style as metaEcosystem.ts -- no SDK, just the exact calls this
 // integration needs against TikTok's Content Posting API v2.
 //
-// Reverted from Direct Post back to the inbox/draft endpoint (2026-09-23):
-// Direct Post (video.publish scope) was enabled on Sandbox and the OAuth
-// scope/token issues were real and got fixed, but TikTok's own API then
-// rejected the post/init call itself with a generic content-guidelines
-// error -- reproduced with a video that had already published successfully
-// through the inbox endpoint minutes earlier, so it's specific to the
-// Direct Post pathway (likely stricter guideline enforcement Sandbox's
-// "Direct Post" toggle doesn't actually bypass), not the video file. Needs
-// real investigation time this wasn't the moment for. The inbox endpoint
-// needs no review and is proven working: the agent pushes the video into
-// the connected account's TikTok inbox as a ready-to-post draft, a human
-// taps Post inside the TikTok app to finish. See git history to retry
-// Direct Post (video/init/ with post_info + privacy-level lookup).
+// Tries Direct Post first (true auto-publish, no manual tap), and falls
+// back to the inbox/draft endpoint if TikTok rejects it for any reason.
+// An earlier attempt at Direct Post alone hit a content-guidelines
+// rejection even on a video that had already published fine through the
+// inbox endpoint -- TikTok support confirmed apps must send an AIGC
+// (AI-generated content) disclosure, which the earlier attempt omitted;
+// this content genuinely is AI-generated (Video Agent + AI-written
+// caption), so `is_aigc: true` is disclosed here, not worked around. The
+// fallback stays in place regardless, since Sandbox's "Direct Post" toggle
+// may still not fully bypass guideline enforcement for every case.
 //
 // FILE_UPLOAD, not PULL_FROM_URL, as the source: PULL_FROM_URL requires
 // verifying domain ownership of the media host in TikTok's developer
@@ -84,6 +81,30 @@ export interface PublishResult {
   error?: string;
 }
 
+// Unaudited apps can only publish as SELF_ONLY (private, visible only to
+// the creator) until TikTok reviews the app for public posting -- querying
+// creator_info tells us which privacy levels this specific account/app
+// combination is actually allowed to use, so we pick a valid one instead of
+// guessing and having the post/init call reject it.
+async function pickPrivacyLevel(accessToken: string): Promise<{ ok: boolean; privacyLevel?: string; error?: string }> {
+  try {
+    const res = await fetch(`${TIKTOK_API_BASE}/post/publish/creator_info/query/`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json; charset=UTF-8" },
+    });
+    const data = await res.json();
+    if (!res.ok || data?.error?.code !== "ok") {
+      return { ok: false, error: data?.error?.message || `Failed to query TikTok creator info (${res.status}).` };
+    }
+    const options: string[] = data.data?.privacy_level_options || [];
+    const privacyLevel = options.includes("PUBLIC_TO_EVERYONE") ? "PUBLIC_TO_EVERYONE" : options[0];
+    if (!privacyLevel) return { ok: false, error: "TikTok returned no available privacy levels for this account." };
+    return { ok: true, privacyLevel };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error querying TikTok creator info." };
+  }
+}
+
 async function waitForPublishComplete(
   publishId: string,
   accessToken: string,
@@ -114,10 +135,49 @@ async function waitForPublishComplete(
   return { ok: false, error: "Timed out waiting for TikTok to finish processing the post." };
 }
 
+async function uploadAndWait(
+  initEndpoint: string,
+  initBody: Record<string, unknown>,
+  videoBuffer: Buffer,
+  accessToken: string
+): Promise<PublishResult> {
+  const initRes = await fetch(`${TIKTOK_API_BASE}${initEndpoint}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json; charset=UTF-8" },
+    body: JSON.stringify(initBody),
+  });
+  const initData = await initRes.json();
+  if (!initRes.ok || initData?.error?.code !== "ok") {
+    return { ok: false, error: initData?.error?.message || `TikTok post init failed (${initRes.status}).` };
+  }
+  const publishId: string = initData.data.publish_id;
+  const uploadUrl: string = initData.data.upload_url;
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "video/mp4",
+      "Content-Range": `bytes 0-${videoBuffer.length - 1}/${videoBuffer.length}`,
+    },
+    body: new Uint8Array(videoBuffer),
+  });
+  if (!uploadRes.ok) {
+    return { ok: false, error: `TikTok video upload failed (${uploadRes.status}).` };
+  }
+
+  const done = await waitForPublishComplete(publishId, accessToken);
+  if (!done.ok) {
+    return { ok: false, error: done.error || "TikTok did not finish processing the post." };
+  }
+  return { ok: true, mediaId: publishId };
+}
+
 // Video-only, per TikTok's Content Posting API -- there is no image-post
-// path used here. `caption` isn't sent to TikTok: the inbox/draft endpoint
-// carries no post_info (title, privacy, etc.) -- the human sets those
-// inside the TikTok app when they tap Post.
+// path used here. Tries Direct Post (true auto-publish) first; if TikTok
+// rejects it for any reason (still not approved for public posting on this
+// app/account combination, a guideline check, etc.), falls back to the
+// inbox/draft endpoint -- which needs no review and always works -- rather
+// than failing the whole publish outright.
 export async function publishTikTokVideo(
   accessToken: string,
   opts: { mediaUrl: string; caption: string }
@@ -128,44 +188,39 @@ export async function publishTikTokVideo(
       return { ok: false, error: `Could not fetch video from ${opts.mediaUrl} (${videoRes.status}).` };
     }
     const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
+    const sourceInfo = {
+      source: "FILE_UPLOAD",
+      video_size: videoBuffer.length,
+      chunk_size: videoBuffer.length,
+      total_chunk_count: 1,
+    };
 
-    const initRes = await fetch(`${TIKTOK_API_BASE}/post/publish/inbox/video/init/`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json; charset=UTF-8" },
-      body: JSON.stringify({
-        source_info: {
-          source: "FILE_UPLOAD",
-          video_size: videoBuffer.length,
-          chunk_size: videoBuffer.length,
-          total_chunk_count: 1,
+    const privacy = await pickPrivacyLevel(accessToken);
+    if (privacy.ok && privacy.privacyLevel) {
+      const direct = await uploadAndWait(
+        "/post/publish/video/init/",
+        {
+          post_info: {
+            title: opts.caption,
+            privacy_level: privacy.privacyLevel,
+            disable_duet: false,
+            disable_comment: false,
+            disable_stitch: false,
+            video_cover_timestamp_ms: 1000,
+            is_aigc: true, // honest disclosure -- this video genuinely is AI-generated
+          },
+          source_info: sourceInfo,
         },
-      }),
-    });
-    const initData = await initRes.json();
-    if (!initRes.ok || initData?.error?.code !== "ok") {
-      return { ok: false, error: initData?.error?.message || `TikTok post init failed (${initRes.status}).` };
-    }
-    const publishId: string = initData.data.publish_id;
-    const uploadUrl: string = initData.data.upload_url;
-
-    const uploadRes = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "video/mp4",
-        "Content-Range": `bytes 0-${videoBuffer.length - 1}/${videoBuffer.length}`,
-      },
-      body: videoBuffer,
-    });
-    if (!uploadRes.ok) {
-      return { ok: false, error: `TikTok video upload failed (${uploadRes.status}).` };
+        videoBuffer,
+        accessToken
+      );
+      if (direct.ok) return direct;
     }
 
-    const done = await waitForPublishComplete(publishId, accessToken);
-    if (!done.ok) {
-      return { ok: false, error: done.error || "TikTok did not finish processing the post." };
-    }
-
-    return { ok: true, mediaId: publishId };
+    // Direct Post unavailable or rejected -- fall back to the inbox/draft
+    // endpoint (needs the video.upload scope; video.publish alone won't
+    // authorize this call, which is fine, it just also fails closed).
+    return await uploadAndWait("/post/publish/inbox/video/init/", { source_info: sourceInfo }, videoBuffer, accessToken);
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error publishing to TikTok." };
   }
