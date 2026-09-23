@@ -89,7 +89,7 @@ async function waitForPublishComplete(
   accessToken: string,
   opts: { timeoutMs?: number; intervalMs?: number } = {}
 ): Promise<{ ok: boolean; error?: string }> {
-  const timeoutMs = opts.timeoutMs ?? 120_000;
+  const timeoutMs = opts.timeoutMs ?? 240_000;
   const intervalMs = opts.intervalMs ?? 3_000;
   const deadline = Date.now() + timeoutMs;
 

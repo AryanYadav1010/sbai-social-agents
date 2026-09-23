@@ -4,6 +4,12 @@ import { prisma } from "@/lib/db";
 import { publishApprovedPost } from "@/lib/orchestrator/publish";
 import { logAudit } from "@/lib/audit";
 
+// Publishing polls the platform's own processing status for up to 4
+// minutes (see tiktokEcosystem.ts) -- without this, Vercel's default
+// function timeout could kill the request before that polling loop
+// finishes and return an opaque 504 instead of our own clear result.
+export const maxDuration = 300;
+
 // Mode 1: this is the only path anything can reach PUBLISHED through --
 // requires an authenticated admin session and an explicit request. No code
 // path auto-approves.
