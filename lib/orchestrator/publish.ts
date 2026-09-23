@@ -37,6 +37,12 @@ export async function publishApprovedPost(postId: string) {
           caption: post.caption,
         });
 
+  // TikTok-only: set when Direct Post (true auto-publish) was rejected and
+  // the inbox/draft fallback saved the overall publish -- worth surfacing
+  // even on success, since it's the only visibility into why Direct Post
+  // keeps failing without it.
+  const directPostError = "directPostError" in result ? result.directPostError : undefined;
+
   if (result.ok && result.mediaId) {
     await prisma.socialPost.update({
       where: { id: postId },
@@ -46,9 +52,9 @@ export async function publishApprovedPost(postId: string) {
       action: "social_post.published",
       entity: "SocialPost",
       entityId: postId,
-      metadata: { externalMediaId: result.mediaId },
+      metadata: { externalMediaId: result.mediaId, directPostError },
     });
-    return { ok: true, mediaId: result.mediaId };
+    return { ok: true, mediaId: result.mediaId, directPostError };
   }
 
   await prisma.socialPost.update({
@@ -59,7 +65,7 @@ export async function publishApprovedPost(postId: string) {
     action: "social_post.publish_failed",
     entity: "SocialPost",
     entityId: postId,
-    metadata: { error: result.error },
+    metadata: { error: result.error, directPostError },
   });
-  return { ok: false, error: result.error };
+  return { ok: false, error: result.error, directPostError };
 }

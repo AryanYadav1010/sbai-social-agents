@@ -125,6 +125,10 @@ export default function ApprovalsClient({
       const data = await res.json();
       if (!res.ok || !data.ok) {
         setError(data.error || "Approve/publish failed.");
+      } else if (data.directPostError) {
+        // TikTok published via the inbox fallback -- worth knowing why
+        // true auto-publish (Direct Post) didn't work this time.
+        setError(`Published via fallback (caption wasn't sent). Direct Post failed: ${data.directPostError}`);
       }
       router.refresh();
     } finally {

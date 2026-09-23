@@ -80,6 +80,11 @@ export interface PublishResult {
   ok: boolean;
   mediaId?: string;
   error?: string;
+  // Set whenever Direct Post was attempted and rejected, even if the
+  // inbox fallback then succeeded -- otherwise the real reason Direct
+  // Post keeps failing is silently lost the moment the fallback saves
+  // the overall publish.
+  directPostError?: string;
 }
 
 // Unaudited apps can only publish as SELF_ONLY (private, visible only to
@@ -196,6 +201,8 @@ export async function publishTikTokVideo(
       total_chunk_count: 1,
     };
 
+    let directPostError: string | undefined;
+
     const privacy = await pickPrivacyLevel(accessToken);
     if (privacy.ok && privacy.privacyLevel) {
       const direct = await uploadAndWait(
@@ -216,12 +223,16 @@ export async function publishTikTokVideo(
         accessToken
       );
       if (direct.ok) return direct;
+      directPostError = direct.error;
+    } else {
+      directPostError = privacy.error;
     }
 
     // Direct Post unavailable or rejected -- fall back to the inbox/draft
     // endpoint (needs the video.upload scope; video.publish alone won't
     // authorize this call, which is fine, it just also fails closed).
-    return await uploadAndWait("/post/publish/inbox/video/init/", { source_info: sourceInfo }, videoBuffer, accessToken);
+    const inbox = await uploadAndWait("/post/publish/inbox/video/init/", { source_info: sourceInfo }, videoBuffer, accessToken);
+    return { ...inbox, directPostError };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error publishing to TikTok." };
   }
