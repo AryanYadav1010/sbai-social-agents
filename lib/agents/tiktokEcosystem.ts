@@ -6,10 +6,11 @@
 // back to the inbox/draft endpoint if TikTok rejects it for any reason.
 // An earlier attempt at Direct Post alone hit a content-guidelines
 // rejection even on a video that had already published fine through the
-// inbox endpoint -- TikTok support confirmed apps must send an AIGC
-// (AI-generated content) disclosure, which the earlier attempt omitted;
-// this content genuinely is AI-generated (Video Agent + AI-written
-// caption), so `is_aigc: true` is disclosed here, not worked around. The
+// inbox endpoint -- TikTok support confirmed apps must disclose whether
+// content is AI-generated (`is_aigc`), which the earlier attempt omitted.
+// Callers pass the real answer per post (true only for Video Agent
+// productions, false for a human's own uploaded/linked footage) -- this is
+// a disclosure, not a workaround, so it has to be honest per post. The
 // fallback stays in place regardless, since Sandbox's "Direct Post" toggle
 // may still not fully bypass guideline enforcement for every case.
 //
@@ -180,7 +181,7 @@ async function uploadAndWait(
 // than failing the whole publish outright.
 export async function publishTikTokVideo(
   accessToken: string,
-  opts: { mediaUrl: string; caption: string }
+  opts: { mediaUrl: string; caption: string; isAigc: boolean }
 ): Promise<PublishResult> {
   try {
     const videoRes = await fetch(opts.mediaUrl);
@@ -207,7 +208,7 @@ export async function publishTikTokVideo(
             disable_comment: false,
             disable_stitch: false,
             video_cover_timestamp_ms: 1000,
-            is_aigc: true, // honest disclosure -- this video genuinely is AI-generated
+            is_aigc: opts.isAigc, // honest disclosure -- only true for Video Agent-generated media
           },
           source_info: sourceInfo,
         },

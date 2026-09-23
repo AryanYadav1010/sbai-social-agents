@@ -24,7 +24,13 @@ export async function publishApprovedPost(postId: string) {
   const accessToken = decryptToken(post.account.accessTokenEncrypted);
   const result =
     post.account.platform === "TIKTOK"
-      ? await publishTikTokVideo(accessToken, { mediaUrl: post.mediaUrl, caption: post.caption })
+      ? await publishTikTokVideo(accessToken, {
+          mediaUrl: post.mediaUrl,
+          caption: post.caption,
+          // Only the Video Agent path is actually AI-generated -- a raw
+          // upload or a manually-pasted URL is the human's own footage.
+          isAigc: Boolean(post.videoAgentProductionId),
+        })
       : await publishInstagramPost(post.account.externalAccountId, accessToken, {
           mediaType: post.mediaType,
           mediaUrl: post.mediaUrl,
