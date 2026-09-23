@@ -32,6 +32,10 @@ export default async function ApprovalsPage() {
   const account = await prisma.socialAccount.findFirst({ where: { platform: "INSTAGRAM" } });
   const tiktokAccount = await prisma.socialAccount.findFirst({ where: { platform: "TIKTOK" } });
   const hasAccounts = { INSTAGRAM: Boolean(account), TIKTOK: Boolean(tiktokAccount) };
+  // The Audience Agent profile is shared across every connected platform
+  // (one business, not one per platform) -- either connected account's copy
+  // works since the PUT handler keeps them in sync.
+  const profileSource = account ?? tiktokAccount;
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">
@@ -40,7 +44,7 @@ export default async function ApprovalsPage() {
         Mode 1: nothing publishes to Instagram or TikTok without an explicit approval here.
       </p>
       <div className="mt-6">
-        <BusinessProfileEditor initialProfile={(account?.audienceProfile as AudienceProfile | null) ?? null} />
+        <BusinessProfileEditor initialProfile={(profileSource?.audienceProfile as AudienceProfile | null) ?? null} />
       </div>
       <ApprovalsClient
         initialPosts={JSON.parse(JSON.stringify(posts))}
