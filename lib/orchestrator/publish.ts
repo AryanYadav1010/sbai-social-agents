@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { decryptToken } from "@/lib/crypto";
 import { publishInstagramPost } from "@/lib/agents/metaEcosystem";
 import { publishTikTokVideo } from "@/lib/agents/tiktokEcosystem";
+import { publishXPost } from "@/lib/agents/xEcosystem";
 import { logAudit } from "@/lib/audit";
 
 // Runs only after an explicit human approval (Mode 1: nothing publishes
@@ -31,6 +32,8 @@ export async function publishApprovedPost(postId: string) {
           // upload or a manually-pasted URL is the human's own footage.
           isAigc: Boolean(post.videoAgentProductionId),
         })
+      : post.account.platform === "X"
+      ? await publishXPost(accessToken, { mediaUrl: post.mediaUrl, caption: post.caption, mediaType: post.mediaType })
       : await publishInstagramPost(post.account.externalAccountId, accessToken, {
           mediaType: post.mediaType,
           mediaUrl: post.mediaUrl,

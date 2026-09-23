@@ -33,7 +33,7 @@ export async function createDraftPost(opts: {
   // so this narrowing always holds today.
   const { caption, complianceVerdict, trendSuggestion, audienceGuidance } = await runDraftGraph({
     topic: opts.topic,
-    platform: account.platform as "INSTAGRAM" | "TIKTOK",
+    platform: account.platform as "INSTAGRAM" | "TIKTOK" | "X",
     accessToken,
     audienceProfile,
     performanceHistorySummary,

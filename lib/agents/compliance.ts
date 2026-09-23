@@ -20,18 +20,26 @@ const BANNED_PATTERNS: { pattern: RegExp; reason: string }[] = [
   { pattern: /\b(send us your (password|card|bank) details?)\b/i, reason: "Solicits sensitive personal/financial information." },
 ];
 
-const MAX_CAPTION_LENGTH = 2200; // Both Instagram's and TikTok's current caption limit
+// Instagram and TikTok both currently allow 2200; X is a hard 280 --
+// sending anything longer just gets rejected by X's own API, so this has
+// to be checked per platform, not as one shared constant.
+const MAX_CAPTION_LENGTH: Record<"INSTAGRAM" | "TIKTOK" | "X", number> = {
+  INSTAGRAM: 2200,
+  TIKTOK: 2200,
+  X: 280,
+};
 
-export async function checkCompliance(caption: string, platform: "INSTAGRAM" | "TIKTOK" = "INSTAGRAM"): Promise<ComplianceVerdict> {
+export async function checkCompliance(caption: string, platform: "INSTAGRAM" | "TIKTOK" | "X" = "INSTAGRAM"): Promise<ComplianceVerdict> {
   const reasons: string[] = [];
-  const platformLabel = platform === "TIKTOK" ? "TikTok" : "Instagram";
+  const platformLabel = platform === "TIKTOK" ? "TikTok" : platform === "X" ? "X" : "Instagram";
+  const maxLength = MAX_CAPTION_LENGTH[platform];
 
   for (const { pattern, reason } of BANNED_PATTERNS) {
     if (pattern.test(caption)) reasons.push(reason);
   }
 
-  if (caption.length > MAX_CAPTION_LENGTH) {
-    reasons.push(`Caption is ${caption.length} characters, exceeds ${platformLabel}'s ${MAX_CAPTION_LENGTH}-character limit.`);
+  if (caption.length > maxLength) {
+    reasons.push(`Caption is ${caption.length} characters, exceeds ${platformLabel}'s ${maxLength}-character limit.`);
   }
 
   if (reasons.length > 0) {

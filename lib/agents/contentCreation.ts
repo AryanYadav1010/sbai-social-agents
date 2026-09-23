@@ -13,7 +13,7 @@ export function isContentCreationConfigured(): boolean {
 }
 
 export interface DraftContext {
-  platform?: "INSTAGRAM" | "TIKTOK";
+  platform?: "INSTAGRAM" | "TIKTOK" | "X";
   trendSuggestion?: { angle?: string; format?: string; suggestedHashtags?: string[]; reasoning?: string };
   audienceGuidance?: { targetingNotes?: string; toneAdjustments?: string; callToActionSuggestion?: string };
   brandVoiceOverride?: string;
@@ -24,7 +24,7 @@ export async function draftInstagramCaption(topic: string, context?: DraftContex
     throw new Error("Content Creation Agent is not configured (missing ANTHROPIC_API_KEY).");
   }
 
-  const platformLabel = context?.platform === "TIKTOK" ? "TikTok" : "Instagram";
+  const platformLabel = context?.platform === "TIKTOK" ? "TikTok" : context?.platform === "X" ? "X" : "Instagram";
   const client = new Anthropic({ apiKey: API_KEY });
 
   const guidanceLines: string[] = [];
@@ -45,14 +45,25 @@ export async function draftInstagramCaption(topic: string, context?: DraftContex
       ? `\n\nAdvisory guidance from other agents (use judgement -- you decide the final wording):\n${guidanceLines.join("\n")}`
       : "";
 
+  // X's hard 280-character cap (including hashtags) needs a genuinely
+  // different length instruction, not just a shorter version of the same
+  // prompt -- Instagram/TikTok's "2-4 sentences + hashtags on their own
+  // line" routinely runs 300-500+ characters, which X's API would reject.
+  const lengthInstruction =
+    platformLabel === "X"
+      ? "Write a single X (Twitter) post for the given topic: warm, direct, no corporate language, " +
+        "under 280 characters total including hashtags -- 1-2 short sentences plus 1-2 relevant " +
+        "hashtags worked into or after the text, not a separate block."
+      : `Write a single ${platformLabel} caption for the given topic: warm, direct, no corporate ` +
+        "language, 2-4 short sentences, end with 2-4 relevant hashtags on their own line.";
+
   const res = await client.messages.create({
     model: MODEL,
     max_tokens: 400,
     system:
       `You are the Content Creation Agent for SB AI Systems' ${platformLabel} account. ` +
-      `Write a single ${platformLabel} caption for the given topic: warm, direct, no corporate ` +
-      "language, 2-4 short sentences, end with 2-4 relevant hashtags on their own line. " +
-      "Never invent specific facts, prices, or claims you weren't given. Output ONLY the " +
+      lengthInstruction +
+      " Never invent specific facts, prices, or claims you weren't given. Output ONLY the " +
       "caption text -- no preamble, no explanation, no quotation marks around it.",
     messages: [{ role: "user", content: `Topic: ${topic}${guidanceBlock}` }],
   });

@@ -21,7 +21,7 @@ import { generateAudienceGuidance, type AudienceGuidance, type AudienceProfile }
 
 const DraftState = Annotation.Root({
   topic: Annotation<string>(),
-  platform: Annotation<"INSTAGRAM" | "TIKTOK">(),
+  platform: Annotation<"INSTAGRAM" | "TIKTOK" | "X">(),
   accessToken: Annotation<string | undefined>(),
   audienceProfile: Annotation<AudienceProfile | null | undefined>(),
   performanceHistorySummary: Annotation<string | undefined>(),
@@ -98,7 +98,7 @@ export interface DraftResult {
 
 export async function runDraftGraph(opts: {
   topic: string;
-  platform: "INSTAGRAM" | "TIKTOK";
+  platform: "INSTAGRAM" | "TIKTOK" | "X";
   accessToken?: string;
   audienceProfile?: AudienceProfile | null;
   performanceHistorySummary?: string;

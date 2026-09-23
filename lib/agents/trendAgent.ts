@@ -44,7 +44,7 @@ function neutralTrendSuggestion(topic: string, reasoning: string): TrendSuggesti
 // enrichment below, never a dependency).
 export async function generateTrendSuggestion(opts: {
   topic: string;
-  platform: "INSTAGRAM" | "TIKTOK";
+  platform: "INSTAGRAM" | "TIKTOK" | "X";
   performanceHistorySummary?: string;
   accessToken?: string;
 }): Promise<TrendSuggestion> {
@@ -52,7 +52,7 @@ export async function generateTrendSuggestion(opts: {
     return neutralTrendSuggestion(opts.topic, "Trend Agent unavailable (not configured) -- using topic as-is.");
   }
 
-  const platformLabel = opts.platform === "TIKTOK" ? "TikTok" : "Instagram";
+  const platformLabel = opts.platform === "TIKTOK" ? "TikTok" : opts.platform === "X" ? "X" : "Instagram";
 
   let suggestion: TrendSuggestion;
   try {

@@ -9,11 +9,12 @@ datasource db {
 
 enum Platform {
   INSTAGRAM
-  // FACEBOOK, TIKTOK, YOUTUBE reserved for later phases (Level 2 clusters
-  // not yet built) -- listed here only so the schema doesn't need a
-  // migration just to add the enum value when those phases start.
-  FACEBOOK
   TIKTOK
+  X
+  // FACEBOOK, YOUTUBE reserved for later phases (Level 2 clusters not yet
+  // built) -- listed here only so the schema doesn't need a migration
+  // just to add the enum value when those phases start.
+  FACEBOOK
   YOUTUBE
 }
 

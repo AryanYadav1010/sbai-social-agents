@@ -79,17 +79,18 @@ export default async function Home() {
     );
   }
 
-  const [instagram, tiktok] = await Promise.all([
+  const [instagram, tiktok, x] = await Promise.all([
     prisma.socialAccount.findFirst({ where: { platform: "INSTAGRAM" } }),
     prisma.socialAccount.findFirst({ where: { platform: "TIKTOK" } }),
+    prisma.socialAccount.findFirst({ where: { platform: "X" } }),
   ]);
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-12">
       <h1 className="text-2xl font-semibold text-slate-900">Connected accounts</h1>
       <p className="mt-1 text-sm text-slate-500">
-        Orchestrator + Meta/TikTok Ecosystem Agents + Content Creation + Compliance, Mode 1 — nothing publishes without
-        human approval.
+        Orchestrator + Meta/TikTok/X Ecosystem Agents + Content Creation + Compliance, Mode 1 — nothing publishes
+        without human approval.
       </p>
 
       <div className="mt-6 flex flex-col gap-3">
@@ -106,6 +107,13 @@ export default async function Home() {
           displayName={tiktok?.displayName || tiktok?.externalAccountId}
           connectHref="/api/tiktok/connect"
           accent="bg-slate-900"
+        />
+        <PlatformCard
+          name="X"
+          connected={Boolean(x)}
+          displayName={x?.displayName || x?.externalAccountId}
+          connectHref="/api/x/connect"
+          accent="bg-black"
         />
       </div>
 

@@ -19,7 +19,7 @@ interface Post {
   externalMediaId: string | null;
   createdAt: string;
   performanceSnapshots: PerformanceSnapshot[];
-  account: { platform: "INSTAGRAM" | "TIKTOK" };
+  account: { platform: "INSTAGRAM" | "TIKTOK" | "X" };
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -44,15 +44,22 @@ function fieldClass(extra = "") {
   return `block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${extra}`;
 }
 
+const PLATFORM_LABELS: Record<"INSTAGRAM" | "TIKTOK" | "X", string> = { INSTAGRAM: "Instagram", TIKTOK: "TikTok", X: "X" };
+const PLATFORM_CONNECT_HREF: Record<"INSTAGRAM" | "TIKTOK" | "X", string> = {
+  INSTAGRAM: "/api/meta/connect",
+  TIKTOK: "/api/tiktok/connect",
+  X: "/api/x/connect",
+};
+
 export default function ApprovalsClient({
   initialPosts,
   hasAccounts,
 }: {
   initialPosts: Post[];
-  hasAccounts: { INSTAGRAM: boolean; TIKTOK: boolean };
+  hasAccounts: { INSTAGRAM: boolean; TIKTOK: boolean; X: boolean };
 }) {
   const router = useRouter();
-  const [platform, setPlatform] = useState<"INSTAGRAM" | "TIKTOK">("INSTAGRAM");
+  const [platform, setPlatform] = useState<"INSTAGRAM" | "TIKTOK" | "X">("INSTAGRAM");
   const [topic, setTopic] = useState("");
   const [mediaSource, setMediaSource] = useState<"upload" | "url" | "videoAgent">("upload");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -150,8 +157,8 @@ export default function ApprovalsClient({
     <div>
       {!hasAccount && (
         <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          No {platform === "TIKTOK" ? "TikTok" : "Instagram"} account connected.{" "}
-          <a href={platform === "TIKTOK" ? "/api/tiktok/connect" : "/api/meta/connect"} className="font-medium underline">
+          No {PLATFORM_LABELS[platform]} account connected.{" "}
+          <a href={PLATFORM_CONNECT_HREF[platform]} className="font-medium underline">
             Connect one first
           </a>
           .
@@ -160,7 +167,7 @@ export default function ApprovalsClient({
 
       <form onSubmit={handleCreateDraft} className="mt-6 flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="inline-flex w-fit rounded-lg bg-slate-100 p-1 text-sm font-medium">
-          {(["INSTAGRAM", "TIKTOK"] as const).map((p) => (
+          {(["INSTAGRAM", "TIKTOK", "X"] as const).map((p) => (
             <button
               key={p}
               type="button"
@@ -172,7 +179,7 @@ export default function ApprovalsClient({
                 platform === p ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
               }`}
             >
-              {p === "INSTAGRAM" ? "Instagram" : "TikTok"}
+              {PLATFORM_LABELS[p]}
             </button>
           ))}
         </div>
@@ -228,7 +235,7 @@ export default function ApprovalsClient({
                 placeholder="https://..."
               />
             </label>
-            {platform === "INSTAGRAM" && (
+            {platform !== "TIKTOK" && (
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                 Media type
                 <select
@@ -237,7 +244,7 @@ export default function ApprovalsClient({
                   className={fieldClass("w-auto")}
                 >
                   <option value="IMAGE">Image</option>
-                  <option value="VIDEO">Video (Reels)</option>
+                  <option value="VIDEO">Video{platform === "INSTAGRAM" ? " (Reels)" : ""}</option>
                 </select>
               </label>
             )}
@@ -278,7 +285,7 @@ export default function ApprovalsClient({
         {initialPosts.map((post) => (
           <div key={post.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-              <span className="font-medium text-slate-700">{post.account.platform === "TIKTOK" ? "TikTok" : "Instagram"}</span>
+              <span className="font-medium text-slate-700">{PLATFORM_LABELS[post.account.platform]}</span>
               <span>·</span>
               <StatusBadge status={post.status} />
               <span>·</span>

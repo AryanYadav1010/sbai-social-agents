@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const topic = body?.topic;
   const mediaUrl = body?.mediaUrl;
   const videoAgentProductionId = body?.videoAgentProductionId;
-  const platform = body?.platform === "TIKTOK" ? "TIKTOK" : "INSTAGRAM";
+  const platform = body?.platform === "TIKTOK" ? "TIKTOK" : body?.platform === "X" ? "X" : "INSTAGRAM";
 
   if (!topic || typeof topic !== "string") {
     return NextResponse.json({ error: "topic is required." }, { status: 400 });
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
   const account = await prisma.socialAccount.findFirst({ where: { platform } });
   if (!account) {
-    const connectPath = platform === "TIKTOK" ? "/api/tiktok/connect" : "/api/meta/connect";
+    const connectPath = platform === "TIKTOK" ? "/api/tiktok/connect" : platform === "X" ? "/api/x/connect" : "/api/meta/connect";
     return NextResponse.json({ error: `No ${platform} account connected yet. Connect one via ${connectPath} first.` }, { status: 400 });
   }
 
