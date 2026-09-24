@@ -31,7 +31,10 @@ export default async function ApprovalsPage() {
 
   const account = await prisma.socialAccount.findFirst({ where: { platform: "INSTAGRAM" } });
   const tiktokAccount = await prisma.socialAccount.findFirst({ where: { platform: "TIKTOK" } });
-  const xAccount = await prisma.socialAccount.findFirst({ where: { platform: "X" } });
+  // Same as app/page.tsx: the X enum value only exists once the one-time
+  // database migration has been run -- querying for it before then throws
+  // at the Postgres level and must never take down the rest of the page.
+  const xAccount = await prisma.socialAccount.findFirst({ where: { platform: "X" } }).catch(() => null);
   const hasAccounts = { INSTAGRAM: Boolean(account), TIKTOK: Boolean(tiktokAccount), X: Boolean(xAccount) };
   // The Audience Agent profile is shared across every connected platform
   // (one business, not one per platform) -- any connected account's copy

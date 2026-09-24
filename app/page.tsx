@@ -79,10 +79,13 @@ export default async function Home() {
     );
   }
 
+  // The X enum value only exists once the one-time database migration has
+  // been run -- until then, querying for it throws at the Postgres level
+  // (invalid enum label), which must never take down the rest of the page.
   const [instagram, tiktok, x] = await Promise.all([
     prisma.socialAccount.findFirst({ where: { platform: "INSTAGRAM" } }),
     prisma.socialAccount.findFirst({ where: { platform: "TIKTOK" } }),
-    prisma.socialAccount.findFirst({ where: { platform: "X" } }),
+    prisma.socialAccount.findFirst({ where: { platform: "X" } }).catch(() => null),
   ]);
 
   return (
