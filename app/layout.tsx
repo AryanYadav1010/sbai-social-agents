@@ -46,6 +46,9 @@ export default async function RootLayout({
                 <Link href="/approvals" className="hover:text-slate-900">
                   Approvals
                 </Link>
+                <Link href="/automation" className="hover:text-slate-900">
+                  Automation
+                </Link>
                 <span className="hidden sm:inline">{session.user.email}</span>
                 <Link href="/api/auth/signout" className="rounded-md border border-slate-200 px-3 py-1.5 hover:bg-slate-50">
                   Sign out

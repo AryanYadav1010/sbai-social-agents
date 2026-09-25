@@ -44,3 +44,7 @@ next-env.d.ts
 # prisma generated client
 /app/generated/prisma
 .env*.local
+
+# macOS worker deployment -- generated/machine-specific, never committed
+/deploy/macos/run-worker.local.sh
+/deploy/macos/logs/*.log

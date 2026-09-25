@@ -30,6 +30,85 @@ export interface ResolvedVideoAgentMedia {
   error?: string;
 }
 
+export interface SubmitVideoProductionResult {
+  ok: boolean;
+  productionId?: string;
+  error?: string;
+}
+
+// Submits a brand-new production for autonomous runs (spec: "Video Agent
+// integration" -- the render itself always happens over there, this just
+// drives that same public API a human would drive by hand through the
+// Video Agent's own UI: create a project, attach the customer's own
+// pre-approved media, describe it, kick off the simple one-shot generate
+// flow. Returns immediately with the queued production's id -- the
+// worker's checkVideoStatus task polls separately rather than blocking a
+// job on the render.
+export async function submitVideoAgentProduction(opts: {
+  name: string;
+  description: string;
+  assets: { url: string; kind: "image" | "video" }[];
+}): Promise<SubmitVideoProductionResult> {
+  if (!VIDEO_AGENT_BASE_URL) {
+    return { ok: false, error: "VIDEO_AGENT_BASE_URL is not configured." };
+  }
+  if (opts.assets.length === 0) {
+    return { ok: false, error: "No media assets provided to submit." };
+  }
+
+  try {
+    const projectRes = await fetch(`${VIDEO_AGENT_BASE_URL}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: opts.name }),
+    });
+    if (!projectRes.ok) {
+      return { ok: false, error: `Video Agent project creation failed (${projectRes.status}).` };
+    }
+    const project = await projectRes.json();
+    const projectId: string = project.id;
+
+    const descRes = await fetch(`${VIDEO_AGENT_BASE_URL}/api/projects/${projectId}/description`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: opts.description }),
+    });
+    if (!descRes.ok) {
+      return { ok: false, error: `Video Agent description update failed (${descRes.status}).` };
+    }
+
+    for (const asset of opts.assets) {
+      const assetRes = await fetch(asset.url);
+      if (!assetRes.ok) {
+        return { ok: false, error: `Could not fetch asset ${asset.url} (${assetRes.status}).` };
+      }
+      const blob = await assetRes.blob();
+      const form = new FormData();
+      form.append("file", blob, asset.url.split("/").pop() || "asset");
+      form.append("kind", asset.kind);
+      const uploadRes = await fetch(`${VIDEO_AGENT_BASE_URL}/api/projects/${projectId}/assets`, {
+        method: "POST",
+        body: form,
+      });
+      if (!uploadRes.ok) {
+        return { ok: false, error: `Video Agent asset upload failed (${uploadRes.status}) for ${asset.url}.` };
+      }
+    }
+
+    const generateRes = await fetch(`${VIDEO_AGENT_BASE_URL}/api/projects/${projectId}/generate-simple`, {
+      method: "POST",
+    });
+    if (!generateRes.ok) {
+      const detail = await generateRes.json().catch(() => null);
+      return { ok: false, error: detail?.detail || `Video Agent generation failed to start (${generateRes.status}).` };
+    }
+    const production = await generateRes.json();
+    return { ok: true, productionId: production.id };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error submitting Video Agent production." };
+  }
+}
+
 // Fetches a production's status/renders from the Video Agent's own API.
 export async function getVideoAgentProduction(productionId: string): Promise<VideoAgentProduction | null> {
   if (!VIDEO_AGENT_BASE_URL) return null;

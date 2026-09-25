@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { upload } from "@vercel/blob/client";
 import AnalyticsPanel, { type PerformanceSnapshot } from "@/components/AnalyticsPanel";
 import TrendAudiencePanel, { type TrendContext, type AudienceContext } from "@/components/TrendAudiencePanel";
 
@@ -30,6 +31,9 @@ const STATUS_STYLES: Record<string, string> = {
   REJECTED: "bg-rose-50 text-rose-700",
   PUBLISHED: "bg-emerald-50 text-emerald-700",
   PUBLISH_FAILED: "bg-rose-50 text-rose-700",
+  PUBLISH_AMBIGUOUS: "bg-orange-50 text-orange-700",
+  GENERATING_MEDIA: "bg-blue-50 text-blue-700",
+  NEEDS_MEDIA: "bg-amber-50 text-amber-700",
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -73,6 +77,22 @@ export default function ApprovalsClient({
 
   const hasAccount = hasAccounts[platform];
 
+  // Publishing (and autonomous drafting/video rendering) now happen on the
+  // background worker, not inline in a request -- poll for updates while
+  // any post is in a state the worker is actively moving through, so the
+  // status badge updates on its own instead of needing a manual refresh.
+  const STILL_RESOLVING = new Set(["APPROVED", "GENERATING_MEDIA"]);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const anyResolving = initialPosts.some((p) => STILL_RESOLVING.has(p.status));
+    if (!anyResolving) return;
+    pollTimer.current = setTimeout(() => router.refresh(), 4000);
+    return () => {
+      if (pollTimer.current) clearTimeout(pollTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPosts]);
+
   const handleCreateDraft = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -87,17 +107,21 @@ export default function ApprovalsClient({
           return;
         }
         setUploadProgress("Uploading file...");
-        const uploadBody = new FormData();
-        uploadBody.append("file", uploadFile);
-        const uploadRes = await fetch("/api/upload", { method: "POST", body: uploadBody });
-        const uploadData = await uploadRes.json();
-        setUploadProgress("");
-        if (!uploadRes.ok) {
-          setError(uploadData.error || "Upload failed.");
+        try {
+          const blob = await upload(`uploads/${uploadFile.name}`, uploadFile, {
+            access: "public",
+            handleUploadUrl: "/api/upload",
+            contentType: uploadFile.type || undefined,
+            onUploadProgress: ({ percentage }) => setUploadProgress(`Uploading file... ${Math.round(percentage)}%`),
+          });
+          resolvedMediaUrl = blob.url;
+          resolvedMediaType = uploadFile.type.startsWith("video/") ? "VIDEO" : "IMAGE";
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Upload failed.");
           return;
+        } finally {
+          setUploadProgress("");
         }
-        resolvedMediaUrl = uploadData.url;
-        resolvedMediaType = uploadData.mediaType;
       }
 
       const body =
@@ -132,11 +156,12 @@ export default function ApprovalsClient({
       const data = await res.json();
       if (!res.ok || !data.ok) {
         setError(data.error || "Approve/publish failed.");
-      } else if (data.directPostError) {
-        // TikTok published via the inbox fallback -- worth knowing why
-        // true auto-publish (Direct Post) didn't work this time.
-        setError(`Published via fallback (caption wasn't sent). Direct Post failed: ${data.directPostError}`);
       }
+      // Publishing now happens on the background worker (see
+      // src/worker/tasks/publishApprovedPost.ts), not inline in this
+      // request -- there's no mediaId/directPostError to show yet. The
+      // polling effect below refreshes automatically once the worker
+      // updates the post's status.
       router.refresh();
     } finally {
       setActioningId(null);
@@ -332,6 +357,34 @@ export default function ApprovalsClient({
                 </button>
               </div>
             )}
+            {post.account.platform === "X" && (post.status === "PENDING_APPROVAL" || post.status === "PUBLISH_FAILED") && (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                <p className="mb-2">
+                  Free option, no X API credits needed: opens X with this caption filled in. Attach the media yourself, then tap Post.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href={`https://x.com/intent/post?text=${encodeURIComponent(post.caption)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700"
+                  >
+                    Share to X (free)
+                  </a>
+                  {post.mediaUrl && (
+                    <a
+                      href={post.mediaUrl}
+                      download
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-white"
+                    >
+                      Download media
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
             {post.status === "PUBLISH_FAILED" && (
               <div className="mt-4">
                 <button
@@ -342,6 +395,31 @@ export default function ApprovalsClient({
                   {actioningId === post.id ? "Retrying..." : "Retry publish"}
                 </button>
               </div>
+            )}
+            {post.status === "PUBLISH_AMBIGUOUS" && (
+              <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50 p-3">
+                <p className="text-sm text-orange-800">
+                  A previous publish attempt never confirmed whether it reached {PLATFORM_LABELS[post.account.platform]}.
+                  <strong> Check the real account first</strong> to see if this already went live before retrying —
+                  retrying could otherwise post it twice.
+                </p>
+                <button
+                  onClick={() => handleApprove(post.id)}
+                  disabled={actioningId === post.id}
+                  className="mt-2 rounded-md bg-orange-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {actioningId === post.id ? "Retrying..." : "I checked — retry publish"}
+                </button>
+              </div>
+            )}
+            {post.status === "NEEDS_MEDIA" && (
+              <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                An autonomous run reached this point with no approved media assets to use. Add media assets for this
+                account, then draft this topic manually or wait for the next scheduled run.
+              </p>
+            )}
+            {post.status === "GENERATING_MEDIA" && (
+              <p className="mt-4 text-sm text-blue-700">Video Agent is rendering this post&apos;s video — this page will update automatically.</p>
             )}
           </div>
         ))}

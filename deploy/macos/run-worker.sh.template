@@ -1,0 +1,22 @@
+#!/bin/bash
+# Wrapper launchd actually executes. Exists so secrets never have to be
+# embedded in the committed plist -- .env stays on the machine only
+# (already gitignored), this script just sources it and execs the real
+# worker command. Also gives us one place to point PATH at the discovered
+# Node install before npm/npx are on it.
+set -euo pipefail
+
+PROJECT_DIR="__PROJECT_DIR__"
+NODE_BIN_DIR="__NODE_BIN_DIR__"
+
+cd "$PROJECT_DIR"
+export PATH="$NODE_BIN_DIR:$PATH"
+
+if [ -f "$PROJECT_DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$PROJECT_DIR/.env"
+  set +a
+fi
+
+exec npm run worker

@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
-import { publishApprovedPost } from "@/lib/orchestrator/publish";
+import { enqueuePublishJob } from "@/src/worker/queue/enqueue";
 import { logAudit } from "@/lib/audit";
-
-// Publishing polls the platform's own processing status for up to 4
-// minutes (see tiktokEcosystem.ts) -- without this, Vercel's default
-// function timeout could kill the request before that polling loop
-// finishes and return an opaque 504 instead of our own clear result.
-export const maxDuration = 300;
 
 // Mode 1: this is the only path anything can reach PUBLISHED through --
 // requires an authenticated admin session and an explicit request. No code
 // path auto-approves.
+//
+// Does NOT publish inline anymore: it validates, marks APPROVED, enqueues
+// a durable publishApprovedPost job, and returns immediately. The actual
+// platform call (which can take up to several minutes -- see TikTok's
+// processing poll) now happens in the background worker, so this request
+// is never at the mercy of a browser tab staying open or a serverless
+// function's execution-time limit. The dashboard picks up the eventual
+// PUBLISHED/PUBLISH_FAILED/PUBLISH_AMBIGUOUS status via its own refresh.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAdminSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -21,11 +23,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const post = await prisma.socialPost.findUnique({ where: { id } });
   if (!post) return NextResponse.json({ error: "Post not found." }, { status: 404 });
-  // PUBLISH_FAILED is retryable from here -- it already passed compliance
-  // and human approval once; the platform API call itself is what failed,
-  // so re-running just that step doesn't need a second approval decision.
-  if (post.status !== "PENDING_APPROVAL" && post.status !== "PUBLISH_FAILED") {
-    return NextResponse.json({ error: `Post is ${post.status}, not PENDING_APPROVAL or PUBLISH_FAILED.` }, { status: 400 });
+  // PUBLISH_FAILED and PUBLISH_AMBIGUOUS are both retryable from here --
+  // the post already passed compliance and human approval once. Ambiguous
+  // still requires the human to have actually checked the real account
+  // first (the dashboard copy makes this explicit); this endpoint doesn't
+  // know whether that check happened, it just allows the retry itself.
+  if (post.status !== "PENDING_APPROVAL" && post.status !== "PUBLISH_FAILED" && post.status !== "PUBLISH_AMBIGUOUS") {
+    return NextResponse.json(
+      { error: `Post is ${post.status}, not PENDING_APPROVAL, PUBLISH_FAILED, or PUBLISH_AMBIGUOUS.` },
+      { status: 400 }
+    );
   }
 
   await prisma.socialPost.update({ where: { id }, data: { status: "APPROVED" } });
@@ -36,6 +43,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     entityId: id,
   });
 
-  const result = await publishApprovedPost(id);
-  return NextResponse.json(result);
+  await enqueuePublishJob(id);
+  await logAudit({
+    actorEmail: session.user?.email,
+    action: "social_post.publish_queued",
+    entity: "SocialPost",
+    entityId: id,
+  });
+
+  return NextResponse.json({ ok: true, queued: true });
 }

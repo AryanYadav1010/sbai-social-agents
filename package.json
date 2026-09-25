@@ -8,7 +8,14 @@
     "vercel-build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "worker": "tsx src/worker/index.ts",
+    "worker:check": "tsx src/worker/health/check.ts",
+    "worker:once": "tsx src/worker/health/runOnceCli.ts",
+    "worker:status": "tsx src/worker/health/status.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.106.0",
@@ -17,11 +24,15 @@
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@vercel/blob": "^2.8.0",
+    "date-fns": "^4.4.0",
+    "date-fns-tz": "^3.2.0",
+    "graphile-worker": "^0.18.0",
     "next": "^16.3.0",
     "next-auth": "^4.24.15",
     "pg": "^8.22.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -29,10 +40,12 @@
     "@types/pg": "^8.20.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/ui": "^4.1.11",
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
     "prisma": "^7.9.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }

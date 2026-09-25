@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchDaemon (system-level, runs at boot regardless of whether anyone
+  logs in -- the right choice for a dedicated, unattended Mac mini). Runs
+  as __RUN_AS_USER__, not root (see UserName below), per the "do not run
+  as root unless absolutely necessary" requirement. No secrets live in
+  this file -- run-worker.sh sources .env at runtime instead.
+  Installed by install.sh, which fills in the __PLACEHOLDER__ values.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.sbaisystems.socialworker</string>
+
+  <key>UserName</key>
+  <string>__RUN_AS_USER__</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__PROJECT_DIR__/deploy/macos/run-worker.local.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__PROJECT_DIR__</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+    <!-- Restarts on crash/unexpected exit, but NOT in a tight loop if it
+         keeps failing immediately -- ThrottleInterval below enforces a
+         minimum gap between restart attempts. -->
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>__PROJECT_DIR__/deploy/macos/logs/worker.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__PROJECT_DIR__/deploy/macos/logs/worker.err.log</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

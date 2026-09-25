@@ -76,6 +76,20 @@ async function checkComplianceNode(state: typeof DraftState.State) {
   return { complianceVerdict };
 }
 
+// Deliberately compiled with no checkpointer -- this graph's entire run
+// (fan out to Trend/Audience, fan in to drafting, then Compliance) happens
+// synchronously inside a single generateSocialDraft job invocation and
+// nothing is written to Postgres until it finishes, so there's no partial
+// graph state that would need to survive a crash or resume mid-graph. If
+// the worker dies while this is running, graphile-worker's own job retry
+// (maxAttempts) just re-runs runDraftGraph() from scratch, which is safe
+// because it has no side effects of its own. The one part of this workflow
+// that genuinely needs cross-process durability -- waiting on a Video
+// Agent render, which can take real wall-clock time -- is deliberately
+// NOT modeled as graph state at all; it's implemented as separate queued
+// jobs (generateVideo, checkVideoStatus) whose progress lives in the
+// SocialPost/AutomationRun rows in Postgres, not in any LangGraph
+// checkpoint. See docs/always-on-worker.md.
 const graph = new StateGraph(DraftState)
   .addNode("trendAgent", trendNode)
   .addNode("audienceAgent", audienceNode)
