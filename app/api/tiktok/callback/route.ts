@@ -44,11 +44,12 @@ export async function GET(req: NextRequest) {
   const accountData = {
     externalAccountId: token.openId,
     displayName,
-    // Refresh token isn't persisted in v1 -- same as Instagram's long-lived
-    // token, this account just needs reconnecting via /api/tiktok/connect
-    // once the access token expires, no refresh cron in this project yet.
     accessTokenEncrypted: encryptToken(token.accessToken),
     tokenExpiresAt: token.expiresInSeconds ? new Date(Date.now() + token.expiresInSeconds * 1000) : null,
+    // Access tokens last 24h; the refresh token (about a year) is what lets
+    // publishing renew them automatically -- see lib/orchestrator/tokens.ts.
+    refreshTokenEncrypted: token.refreshToken ? encryptToken(token.refreshToken) : null,
+    refreshTokenExpiresAt: token.refreshExpiresInSeconds ? new Date(Date.now() + token.refreshExpiresInSeconds * 1000) : null,
   };
   if (existing) {
     await prisma.socialAccount.update({ where: { id: existing.id }, data: accountData });

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { decryptToken } from "@/lib/crypto";
+import { getUsableAccessToken } from "@/lib/orchestrator/tokens";
 import { publishInstagramPost } from "@/lib/agents/metaEcosystem";
 import { publishTikTokVideo } from "@/lib/agents/tiktokEcosystem";
 import { publishXPost } from "@/lib/agents/xEcosystem";
@@ -22,7 +22,15 @@ export async function publishApprovedPost(postId: string) {
     throw new Error(`SocialPost ${postId} is not APPROVED (status: ${post.status}) -- refusing to publish.`);
   }
 
-  const accessToken = decryptToken(post.account.accessTokenEncrypted);
+  let accessToken: string;
+  try {
+    accessToken = await getUsableAccessToken(post.account);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to obtain a usable access token.";
+    await prisma.socialPost.update({ where: { id: postId }, data: { status: "PUBLISH_FAILED" } });
+    await logAudit({ action: "social_post.publish_failed", entity: "SocialPost", entityId: postId, metadata: { error: message } });
+    return { ok: false, error: message };
+  }
   const result =
     post.account.platform === "TIKTOK"
       ? await publishTikTokVideo(accessToken, {

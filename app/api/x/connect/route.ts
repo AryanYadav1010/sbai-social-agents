@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const redirectUri = new URL("/api/x/callback", req.url).toString();
   const codeVerifier = base64url(randomBytes(32));
   const codeChallenge = base64url(createHash("sha256").update(codeVerifier).digest());
-  const scopes = ["tweet.read", "tweet.write", "users.read", "offline.access"].join(" ");
+  const scopes = ["tweet.read", "tweet.write", "users.read", "media.write", "offline.access"].join(" ");
 
   const authUrl = new URL("https://twitter.com/i/oauth2/authorize");
   authUrl.searchParams.set("response_type", "code");

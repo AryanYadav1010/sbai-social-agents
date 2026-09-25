@@ -50,10 +50,10 @@ export async function GET(req: NextRequest) {
   const accountData = {
     externalAccountId: handle || "unknown",
     displayName,
-    // Refresh token isn't persisted in v1 -- same as Instagram/TikTok,
-    // reconnecting via /api/x/connect is the interim path once expired.
     accessTokenEncrypted: encryptToken(token.accessToken),
     tokenExpiresAt: token.expiresInSeconds ? new Date(Date.now() + token.expiresInSeconds * 1000) : null,
+    // X access tokens last 2h; the refresh token lets publishing renew them (lib/orchestrator/tokens.ts).
+    refreshTokenEncrypted: token.refreshToken ? encryptToken(token.refreshToken) : null,
   };
   if (existing) {
     await prisma.socialAccount.update({ where: { id: existing.id }, data: accountData });

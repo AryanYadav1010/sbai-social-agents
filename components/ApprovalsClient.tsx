@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { upload } from "@vercel/blob/client";
 import AnalyticsPanel, { type PerformanceSnapshot } from "@/components/AnalyticsPanel";
 import TrendAudiencePanel, { type TrendContext, type AudienceContext } from "@/components/TrendAudiencePanel";
 
@@ -87,17 +88,21 @@ export default function ApprovalsClient({
           return;
         }
         setUploadProgress("Uploading file...");
-        const uploadBody = new FormData();
-        uploadBody.append("file", uploadFile);
-        const uploadRes = await fetch("/api/upload", { method: "POST", body: uploadBody });
-        const uploadData = await uploadRes.json();
-        setUploadProgress("");
-        if (!uploadRes.ok) {
-          setError(uploadData.error || "Upload failed.");
+        try {
+          const blob = await upload(`uploads/${uploadFile.name}`, uploadFile, {
+            access: "public",
+            handleUploadUrl: "/api/upload",
+            contentType: uploadFile.type || undefined,
+            onUploadProgress: ({ percentage }) => setUploadProgress(`Uploading file... ${Math.round(percentage)}%`),
+          });
+          resolvedMediaUrl = blob.url;
+          resolvedMediaType = uploadFile.type.startsWith("video/") ? "VIDEO" : "IMAGE";
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Upload failed.");
           return;
+        } finally {
+          setUploadProgress("");
         }
-        resolvedMediaUrl = uploadData.url;
-        resolvedMediaType = uploadData.mediaType;
       }
 
       const body =
@@ -330,6 +335,34 @@ export default function ApprovalsClient({
                 >
                   Reject
                 </button>
+              </div>
+            )}
+            {post.account.platform === "X" && (post.status === "PENDING_APPROVAL" || post.status === "PUBLISH_FAILED") && (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                <p className="mb-2">
+                  Free option, no X API credits needed: opens X with this caption filled in. Attach the media yourself, then tap Post.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href={`https://x.com/intent/post?text=${encodeURIComponent(post.caption)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700"
+                  >
+                    Share to X (free)
+                  </a>
+                  {post.mediaUrl && (
+                    <a
+                      href={post.mediaUrl}
+                      download
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-white"
+                    >
+                      Download media
+                    </a>
+                  )}
+                </div>
               </div>
             )}
             {post.status === "PUBLISH_FAILED" && (

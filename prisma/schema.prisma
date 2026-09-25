@@ -28,10 +28,34 @@ enum SocialPostStatus {
   DRAFT               // Content Creation Agent has produced a caption, not yet compliance-checked
   COMPLIANCE_REJECTED  // Compliance Agent blocked it -- never reaches the approval queue
   PENDING_APPROVAL     // passed Compliance, waiting on a human in /approvals
-  APPROVED             // human approved, Orchestrator is publishing (or about to)
+  APPROVED             // human approved, enqueued/being published
   REJECTED             // human explicitly rejected
   PUBLISHED            // live on the real platform
-  PUBLISH_FAILED       // approved, but the platform API call failed
+  PUBLISH_FAILED       // approved, but the platform API call failed in a way we know is safe to retry
+  PUBLISH_AMBIGUOUS    // worker died mid-publish-call -- we don't know if the platform actually
+                       // received the post, so this is NOT auto-retried; needs a human to check
+                       // the real account and resolve it via the dashboard
+  GENERATING_MEDIA     // autonomous run submitted a Video Agent production and is waiting on the
+                       // async render to finish before drafting can continue
+  NEEDS_MEDIA          // autonomous run had no usable media strategy/assets -- deliberately not
+                       // auto-substituted with scraped/stock/invented media, needs a human to attach some
+}
+
+enum AutomationRunStatus {
+  QUEUED
+  PLANNING
+  GENERATING_DRAFT
+  AWAITING_VIDEO
+  PENDING_APPROVAL
+  PUBLISHED
+  FAILED
+  SKIPPED // e.g. daily post cap already reached, or schedule disabled between claim and run
+}
+
+enum WorkerNodeStatus {
+  ONLINE
+  OFFLINE // derived: heartbeat older than the staleness timeout -- never written directly except
+          // by an explicit graceful-shutdown update
 }
 
 // One Meta app can hold multiple connected accounts eventually (Phase 4:
@@ -43,8 +67,12 @@ model SocialAccount {
   displayName        String?
   accessTokenEncrypted String // encrypted at rest, per the blueprint's Level 8 "non-negotiable" security note
   tokenExpiresAt     DateTime?
+  refreshTokenEncrypted String? // TikTok only: access tokens last 24h, this renews them without a manual reconnect
+  refreshTokenExpiresAt DateTime?
   audienceProfile    Json?    // Audience Agent config: {businessSummary, targetAudience, brandVoice?, goals?} -- set via the dashboard, advisory only
   posts              SocialPost[]
+  automationSchedules AutomationSchedule[]
+  mediaAssets        MediaAsset[]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -57,7 +85,10 @@ model SocialPost {
   account            SocialAccount    @relation(fields: [accountId], references: [id])
   topic              String           // the human-entered brief the Content Creation Agent drafted from
   mediaType          MediaType        @default(IMAGE)
-  mediaUrl           String           // publicly-reachable image/video URL -- Instagram's Content Publishing API requires real media
+  mediaUrl           String           // publicly-reachable image/video URL -- Instagram's Content Publishing API requires real media.
+  // Nullable-in-practice via empty string during GENERATING_MEDIA/NEEDS_MEDIA (kept non-null/String
+  // for compatibility with the existing required column -- worker tasks must not treat "" as a
+  // real URL and must never call publish while status is one of those two).
   videoAgentProductionId String?      // set when mediaUrl was imported from the separate Video Agent product, for traceability
   caption            String
   status             SocialPostStatus @default(DRAFT)
@@ -69,10 +100,34 @@ model SocialPost {
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
+  automationRunId    String?          // set when this draft was created by the autonomous worker rather than a human via the dashboard form
+  automationRun      AutomationRun?   @relation(fields: [automationRunId], references: [id])
+
   performanceSnapshots PostPerformance[]
+  publishAttempt       PublishAttempt?
 
   @@index([status])
   @@index([accountId])
+  @@index([automationRunId])
+}
+
+// One row per attempt to actually call a platform's publish API for a given
+// post. Exists specifically to make retried publish jobs safe: a durable
+// queue gives at-least-once execution, so a worker that dies after sending
+// the HTTP request but before recording the result must NOT blindly retry
+// the real platform call (that risks a duplicate live post). unique on
+// postId -- there is only ever one "current" publish lifecycle per post,
+// even across retries of the same durable job.
+model PublishAttempt {
+  id          String    @id @default(cuid())
+  postId      String    @unique
+  post        SocialPost @relation(fields: [postId], references: [id])
+  status      String    // IN_PROGRESS | SUCCEEDED | FAILED -- IN_PROGRESS is the "we don't know" state
+  error       String?
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+
+  @@index([status])
 }
 
 // Analytics Agent snapshots -- one row per "Refresh analytics" click, kept as
@@ -106,4 +161,109 @@ model AuditLog {
   entityId   String
   metadata   Json?
   createdAt  DateTime @default(now())
+}
+
+// Persistent per-account automation config -- the always-on worker's
+// scheduler polls for schedules whose nextRunAt is due, exactly like the
+// dashboard's own posting form but on a timer instead of a click. One row
+// per (account, cadence) the admin configures, not one row per occurrence
+// (occurrences are AutomationRun).
+model AutomationSchedule {
+  id                String    @id @default(cuid())
+  accountId         String
+  account           SocialAccount @relation(fields: [accountId], references: [id])
+  enabled           Boolean   @default(false)
+  timezone          String    // IANA name e.g. "Europe/London" -- all wall-clock schedule math
+                               // (postingTimes, allowedDays) is done in this zone, DST-safe via
+                               // the Temporal-style zoned conversion in the scheduler, but
+                               // nextRunAt itself is always stored as an absolute UTC instant.
+
+  // Cadence
+  postsPerDay       Int       @default(1)
+  allowedDays       Int[]     @default([0,1,2,3,4,5,6]) // 0=Sunday .. 6=Saturday, JS Date convention
+  postingTimes      String[]  @default(["12:00"])        // "HH:mm" in `timezone`, one nextRunAt slot per entry per allowed day
+
+  // Content
+  contentPillars    String[]  @default([]) // short topics/themes the planner rotates through
+  campaignBrief     String?   // free-text brand/campaign instructions injected into planning
+  defaultInstructions String?
+  useVideoAgent     Boolean   @default(false)
+  requireApproval   Boolean   @default(true) // per-account override; the server-side
+                                               // ENABLE_AUTONOMOUS_PUBLISH flag is a second,
+                                               // harder gate -- both must allow it for a
+                                               // schedule to auto-publish without a human click
+
+  // Scheduler bookkeeping
+  nextRunAt         DateTime?
+  lastRunAt         DateTime?
+  lastSuccessAt     DateTime?
+  lastError         String?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  runs              AutomationRun[]
+
+  @@index([enabled, nextRunAt])
+  @@index([accountId])
+}
+
+// One row per scheduled occurrence actually claimed by the scheduler --
+// this is what "recent autonomous run history" on the dashboard reads from,
+// and what SocialPost.automationRunId links back to so an audit trail can
+// answer "why was this topic chosen" for any given draft.
+model AutomationRun {
+  id            String    @id @default(cuid())
+  scheduleId    String
+  schedule      AutomationSchedule @relation(fields: [scheduleId], references: [id])
+  status        AutomationRunStatus @default(QUEUED)
+  // Deterministic key (derived from scheduleId + the exact slot instant it
+  // was claimed for) so two worker nodes racing the same due schedule can
+  // never both enqueue a job for the same occurrence -- enforced at the DB
+  // level via the unique constraint, not just application logic.
+  idempotencyKey String   @unique
+  plannedTopic  String?   // the structured brief the Planning layer produced, before Content Creation writes final copy
+  planMetadata  Json?     // why this topic was chosen -- pillar used, recent-topics avoided, etc.
+  error         String?
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+
+  posts         SocialPost[]
+
+  @@index([scheduleId])
+  @@index([status])
+}
+
+// A pre-approved pool of the customer's own photos/clips the autonomous
+// worker is allowed to draw from when a schedule uses the Video Agent --
+// populated by a human via the dashboard upload, never by the worker
+// itself. If an account has none, autonomous Video Agent runs mark the
+// SocialPost NEEDS_MEDIA rather than substituting stock/scraped media.
+model MediaAsset {
+  id        String   @id @default(cuid())
+  accountId String
+  account   SocialAccount @relation(fields: [accountId], references: [id])
+  url       String   // Vercel Blob URL (or any publicly-reachable URL), same as a post's own mediaUrl
+  kind      String   // "image" | "video" -- matches the Video Agent's own asset kind values
+  label     String?  // optional human note, e.g. "storefront exterior"
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+}
+
+// Registration/heartbeat for each machine running `npm run worker`. Lets
+// the dashboard show whether automation execution is actually online
+// without exposing anything about the host beyond what's needed for that.
+model WorkerNode {
+  id            String   @id @default(cuid())
+  hostname      String
+  appVersion    String?  // git commit/short SHA when available
+  os            String?
+  concurrency   Int
+  status        WorkerNodeStatus @default(ONLINE)
+  startedAt     DateTime @default(now())
+  lastHeartbeatAt DateTime @default(now())
+  runningJobCount Int    @default(0)
+
+  @@index([status, lastHeartbeatAt])
 }

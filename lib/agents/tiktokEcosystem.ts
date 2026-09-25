@@ -26,6 +26,7 @@ export interface TikTokTokenResult {
   accessToken?: string;
   refreshToken?: string;
   expiresInSeconds?: number;
+  refreshExpiresInSeconds?: number;
   openId?: string;
   error?: string;
 }
@@ -57,10 +58,44 @@ export async function exchangeTikTokCode(
       accessToken: data.access_token,
       refreshToken: data.refresh_token,
       expiresInSeconds: data.expires_in,
+      refreshExpiresInSeconds: data.refresh_expires_in,
       openId: data.open_id,
     };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error exchanging TikTok OAuth code." };
+  }
+}
+
+export async function refreshTikTokToken(
+  refreshToken: string,
+  clientKey: string,
+  clientSecret: string
+): Promise<TikTokTokenResult> {
+  try {
+    const res = await fetch(`${TIKTOK_API_BASE}/oauth/token/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "Cache-Control": "no-cache" },
+      body: new URLSearchParams({
+        client_key: clientKey,
+        client_secret: clientSecret,
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error || !data.access_token) {
+      return { ok: false, error: data?.error_description || data?.error || `TikTok token refresh failed (${res.status}).` };
+    }
+    return {
+      ok: true,
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token,
+      expiresInSeconds: data.expires_in,
+      refreshExpiresInSeconds: data.refresh_expires_in,
+      openId: data.open_id,
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error refreshing TikTok token." };
   }
 }
 
